@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Account — Creoveya</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<nav class="navbar"><div class="navbar-inner">
+  <a class="brand" href="/"><img src="/img/logo.svg" class="brand-mark" alt="Creoveya">Creoveya</a>
+  <a href="/" class="btn btn-outline btn-sm">Back to Home</a>
+</div></nav>
+
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <div class="auth-tab" onclick="location.href='/login.html'">Sign In</div>
+      <div class="auth-tab active" onclick="location.href='/register.html'">Create Account</div>
+    </div>
+    <div class="error-banner" id="err"></div>
+    <form id="registerForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="email">Email (optional)</label>
+        <input type="email" id="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" minlength="8" required>
+        <p class="text-muted" style="font-size:.8rem; margin-top:4px;">At least 8 characters.</p>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+    </form>
+    <p class="text-muted text-center" style="margin-top:16px; font-size:.85rem;">
+      After registering, you'll choose a credit plan and submit payment before you can access the studio.
+    </p>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('err');
+    errEl.classList.remove('show');
+    try {
+      await apiFetch('/auth/register', {
+        method: 'POST',
+        body: {
+          username: document.getElementById('username').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        },
+      });
+      window.location.href = '/payment';
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

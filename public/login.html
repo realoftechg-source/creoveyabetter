@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Creoveya</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<nav class="navbar"><div class="navbar-inner">
+  <a class="brand" href="/"><img src="/img/logo.svg" class="brand-mark" alt="Creoveya">Creoveya</a>
+  <a href="/" class="btn btn-outline btn-sm">Back to Home</a>
+</div></nav>
+
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="location.href='/login.html'">Sign In</div>
+      <div class="auth-tab" onclick="location.href='/register.html'">Create Account</div>
+    </div>
+    <div class="error-banner" id="err"></div>
+    <p class="success-banner" id="suspendedMsg" style="background:var(--danger-bg); color:var(--danger);"></p>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get('suspended')) {
+    const el = document.getElementById('suspendedMsg');
+    el.textContent = 'Your account has been suspended. Contact support if you believe this is a mistake.';
+    el.classList.add('show');
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('err');
+    errEl.classList.remove('show');
+    try {
+      const data = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: { username: document.getElementById('username').value, password: document.getElementById('password').value },
+      });
+      if (data.user.isAdmin) window.location.href = '/admin_dashboard';
+      else if (data.user.hasActiveAccess) window.location.href = '/dashboard';
+      else window.location.href = '/payment';
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

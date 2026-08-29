@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio — Creoveya</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+
+  <main class="app-main">
+    <div class="app-topbar">
+      <div class="flex items-center gap-12">
+        <button class="menu-toggle" id="menuToggle">☰</button>
+        <div><h1>Creoveya Studio</h1><p class="text-muted">Preview your camera, choose your look, then go live.</p></div>
+      </div>
+      <div id="topbarRight"></div>
+    </div>
+
+    <div class="app-content">
+      <div class="error-banner" id="usageBanner" style="background:var(--warning-bg); color:var(--warning);"></div>
+
+      <div class="camera-wrap" id="cameraWrap">
+        <div class="camera-overlay-top">
+          <span class="pill-badge" id="liveBadge">IDLE</span>
+          <div class="flex gap-8 items-center">
+            <span class="pill-badge" id="timerBadge">00:00</span>
+            <button class="icon-btn sm" id="fullscreenBtn" title="Toggle fullscreen">⤢</button>
+          </div>
+        </div>
+        <video id="localPreview" autoplay muted playsinline style="display:none; width:100%; height:100%; object-fit:cover;"></video>
+        <video id="transformedFeed" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:cover;"></video>
+        <div class="camera-placeholder" id="cameraPlaceholder">
+          <span>📷</span>
+          <span>Camera preview is off</span>
+          <button class="btn btn-outline btn-sm" id="previewBtn">Preview Camera</button>
+        </div>
+        <div class="camera-overlay-bottom hidden" id="cameraControls">
+          <button class="icon-btn" id="micBtn" title="Toggle microphone">🎙️</button>
+          <button class="icon-btn" id="mirrorBtn" title="Mirror preview">⇋</button>
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center mt-16" style="flex-wrap:wrap; gap:12px;">
+        <div>
+          <h3 style="margin-bottom:2px;">Choose your look</h3>
+          <p class="text-muted" style="margin:0; font-size:.85rem;">Pick a preset or upload a reference face.</p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="addLookBtn">+ Add Face / Select Face</button>
+      </div>
+      <div class="look-grid mt-16" id="lookGrid"></div>
+
+      <div class="card mt-24">
+        <label for="promptInput">Custom transformation prompt (optional)</label>
+        <textarea id="promptInput" placeholder="e.g. Transform my face into a cinematic high-fidelity 3D cyberpunk avatar with ambient neon highlights."></textarea>
+      </div>
+
+      <div class="flex gap-12 mt-16" style="flex-wrap:wrap;">
+        <button class="btn btn-primary" id="goLiveBtn">🔴 Go Live</button>
+        <button class="btn btn-outline hidden" id="shareBtn">Share Stream</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add Look modal -->
+<div class="modal-backdrop" id="lookModalBackdrop">
+  <div class="modal">
+    <div class="modal-header"><h3>Add a look</h3><button class="modal-close" id="lookModalClose">×</button></div>
+    <div class="error-banner" id="lookError"></div>
+    <form id="lookForm">
+      <div class="form-group"><label for="lookName">Name</label><input type="text" id="lookName" required></div>
+      <div class="form-group"><label for="lookImage">Reference face image</label><input type="file" id="lookImage" accept="image/*" required></div>
+      <div class="form-group"><label for="lookPrompt">Prompt (optional)</label><textarea id="lookPrompt" placeholder="Describe the transformation style"></textarea></div>
+      <button type="submit" class="btn btn-primary btn-block">Save Look</button>
+    </form>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/sidebar.js"></script>
+<script src="/js/studio.js"></script>
+</body>
+</html>

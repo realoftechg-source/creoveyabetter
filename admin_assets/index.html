@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Creoveya</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar">
+    <a class="brand" href="/admin_dashboard"><img src="/img/logo.svg" class="brand-mark" alt="Creoveya">Creoveya Admin</a>
+    <button class="sidebar-link active" data-section="overview"><span class="icon">📊</span>Overview</button>
+    <button class="sidebar-link" data-section="users"><span class="icon">👥</span>Users</button>
+    <button class="sidebar-link" data-section="payments"><span class="icon">🧾</span>Payment Approvals</button>
+    <button class="sidebar-link" data-section="plans"><span class="icon">💳</span>Credit Plans</button>
+    <button class="sidebar-link" data-section="methods"><span class="icon">🏦</span>Payment Methods</button>
+    <button class="sidebar-link" data-section="settings"><span class="icon">⚙️</span>Platform Settings</button>
+    <div class="sidebar-divider"></div>
+    <a class="sidebar-link" href="/" target="_blank"><span class="icon">🌐</span>View Site</a>
+    <button class="sidebar-link" id="adminLogout"><span class="icon">🚪</span>Log Out</button>
+  </aside>
+
+  <main class="app-main">
+    <div class="app-topbar">
+      <div class="flex items-center gap-12">
+        <button class="menu-toggle" id="menuToggle">☰</button>
+        <div><h1 id="sectionTitle">Overview</h1><p class="text-muted" id="sectionSubtitle">Platform activity at a glance.</p></div>
+      </div>
+      <span class="badge badge-neutral">Admin</span>
+    </div>
+    <div class="app-content" id="sectionContent"></div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/admin_dashboard/admin.js"></script>
+</body>
+</html>

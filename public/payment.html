@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose a Plan — Creoveya</title>
+<link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<nav class="navbar"><div class="navbar-inner">
+  <a class="brand" href="/"><img src="/img/logo.svg" class="brand-mark" alt="Creoveya">Creoveya</a>
+  <button class="btn btn-outline btn-sm" id="logoutTop">Log Out</button>
+</div></nav>
+
+<div class="container" style="padding-top: 40px; padding-bottom: 60px; max-width: 760px;">
+  <div class="text-center mb-16">
+    <h1>Choose a credit plan to get started</h1>
+    <p>Select a plan, complete payment, and upload your receipt. An admin will review and approve it — your dashboard unlocks right after.</p>
+  </div>
+
+  <div id="pendingNotice" class="card hidden" style="margin-bottom: 24px; border-color: var(--warning);">
+    <span class="badge badge-warning">Pending Review</span>
+    <p class="mt-8" style="margin-bottom:0;">You already have a payment submitted and awaiting admin approval. You'll get access as soon as it's reviewed.</p>
+  </div>
+
+  <!-- Step 1: Plan -->
+  <div class="card mb-16" id="stepPlan">
+    <h3>1. Choose your plan</h3>
+    <div class="grid grid-2" id="planOptions"></div>
+  </div>
+
+  <!-- Step 2: Method -->
+  <div class="card mb-16 hidden" id="stepMethod">
+    <h3>2. Choose a payment method</h3>
+    <div class="grid grid-2" id="methodTypeOptions">
+      <button type="button" class="btn btn-outline btn-block" data-type="bank">🏦 Bank Transfer</button>
+      <button type="button" class="btn btn-outline btn-block" data-type="crypto">₿ Cryptocurrency</button>
+    </div>
+    <div class="mt-16" id="methodDetailOptions"></div>
+  </div>
+
+  <!-- Step 3: Instructions + receipt -->
+  <div class="card hidden" id="stepReceipt">
+    <h3>3. Send payment &amp; upload your receipt</h3>
+    <div class="card" id="instructionsBox" style="background: var(--bg-soft);"></div>
+    <div class="error-banner" id="submitError"></div>
+    <div class="success-banner" id="submitSuccess"></div>
+    <form id="receiptForm" class="mt-16">
+      <div class="form-group">
+        <label for="receiptFile">Upload receipt / payment screenshot</label>
+        <input type="file" id="receiptFile" accept="image/png,image/jpeg,image/webp" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Submit Payment for Review</button>
+    </form>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+let plans = [];
+let methods = [];
+let selectedPlanId = null;
+let selectedMethodId = null;
+
+async function init() {
+  const user = await getSession();
+  if (!user) return window.location.href = '/login.html';
+  if (user.hasActiveAccess) return window.location.href = '/dashboard';
+
+  document.getElementById('logoutTop').addEventListener('click', async () => {
+    await apiFetch('/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+  });
+
+  const [plansData, methodsData, subsData] = await Promise.all([
+    apiFetch('/api/payments/plans'),
+    apiFetch('/api/payments/methods'),
+    apiFetch('/api/payments/my-submissions'),
+  ]);
+  plans = plansData.plans;
+  methods = methodsData.methods;
+
+  const hasPending = subsData.submissions.some((s) => s.status === 'pending');
+  if (hasPending) document.getElementById('pendingNotice').classList.remove('hidden');
+
+  renderPlans();
+}
+
+function renderPlans() {
+  document.getElementById('planOptions').innerHTML = plans.map((p) => `
+    <div class="card" data-plan="${p.id}" style="cursor:pointer; border-width:2px;">
+      <h3>${p.name}</h3>
+      <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900);">$${p.price}</div>
+      <p>${p.credits.toLocaleString()} credits · ≈ ${p.minutes} min</p>
+      ${p.description ? `<p class="text-muted">${p.description}</p>` : ''}
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-plan]').forEach((el) => {
+    el.addEventListener('click', () => selectPlan(parseInt(el.dataset.plan, 10)));
+  });
+}
+
+function selectPlan(id) {
+  selectedPlanId = id;
+  document.querySelectorAll('[data-plan]').forEach((el) => {
+    el.style.borderColor = parseInt(el.dataset.plan, 10) === id ? 'var(--blue-600)' : 'var(--border)';
+  });
+  document.getElementById('stepMethod').classList.remove('hidden');
+}
+
+document.querySelectorAll('#methodTypeOptions button').forEach((btn) => {
+  btn.addEventListener('click', () => renderMethodDetails(btn.dataset.type));
+});
+
+function renderMethodDetails(type) {
+  const filtered = methods.filter((m) => m.type === type);
+  const box = document.getElementById('methodDetailOptions');
+  if (!filtered.length) {
+    box.innerHTML = `<p class="text-muted">No ${type === 'bank' ? 'bank accounts' : 'crypto methods'} are configured right now. Try the other option or contact support.</p>`;
+    return;
+  }
+  box.innerHTML = filtered.map((m) => `
+    <div class="card mt-16" data-method="${m.id}" style="cursor:pointer; border-width:2px;">
+      ${type === 'bank'
+        ? `<strong>${m.label || m.bankName}</strong><p>${m.bankName} · ${m.accountName}<br>Acct: ${m.accountNumber}${m.routingSwift ? ` · ${m.routingSwift}` : ''}</p>`
+        : `<strong>${m.label || m.cryptoCurrency}</strong><p>${m.cryptoCurrency} address:<br><code style="word-break:break-all;">${m.walletAddress}</code>${m.networkNote ? `<br><span class="text-muted">${m.networkNote}</span>` : ''}</p>`
+      }
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-method]').forEach((el) => {
+    el.addEventListener('click', () => selectMethod(parseInt(el.dataset.method, 10), type));
+  });
+}
+
+function selectMethod(id, type) {
+  selectedMethodId = id;
+  document.querySelectorAll('[data-method]').forEach((el) => {
+    el.style.borderColor = parseInt(el.dataset.method, 10) === id ? 'var(--blue-600)' : 'var(--border)';
+  });
+  const m = methods.find((x) => x.id === id);
+  const box = document.getElementById('instructionsBox');
+  box.innerHTML = type === 'bank'
+    ? `<h4>Send payment via bank transfer</h4><p><strong>Bank:</strong> ${m.bankName}<br><strong>Account name:</strong> ${m.accountName}<br><strong>Account number:</strong> ${m.accountNumber}${m.routingSwift ? `<br><strong>Routing/SWIFT:</strong> ${m.routingSwift}` : ''}</p><p class="text-muted">Once sent, upload your receipt below.</p>`
+    : `<h4>Send payment via ${m.cryptoCurrency}</h4><p><strong>Wallet address:</strong><br><code style="word-break:break-all;">${m.walletAddress}</code></p>${m.networkNote ? `<p class="text-muted">${m.networkNote}</p>` : ''}<p class="text-muted">Once sent, upload your receipt/transaction screenshot below.</p>`;
+  document.getElementById('stepReceipt').classList.remove('hidden');
+  document.getElementById('stepReceipt').scrollIntoView({ behavior: 'smooth' });
+}
+
+document.getElementById('receiptForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('submitError');
+  const okEl = document.getElementById('submitSuccess');
+  errEl.classList.remove('show');
+  okEl.classList.remove('show');
+
+  if (!selectedPlanId || !selectedMethodId) {
+    errEl.textContent = 'Please choose a plan and a payment method first.';
+    errEl.classList.add('show');
+    return;
+  }
+  const file = document.getElementById('receiptFile').files[0];
+  if (!file) return;
+
+  const fd = new FormData();
+  fd.append('planId', selectedPlanId);
+  fd.append('methodId', selectedMethodId);
+  fd.append('receipt', file);
+
+  try {
+    await apiFetch('/api/payments/submit', { method: 'POST', body: fd });
+    okEl.textContent = 'Payment submitted! An admin will review it shortly — you\'ll get access as soon as it\'s approved.';
+    okEl.classList.add('show');
+    document.getElementById('receiptForm').reset();
+    document.getElementById('pendingNotice').classList.remove('hidden');
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+  }
+});
+
+init();
+</script>
+</body>
+</html>
