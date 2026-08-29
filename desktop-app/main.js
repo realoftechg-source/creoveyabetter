@@ -5,7 +5,7 @@ const path = require('path');
 // Using the same hosted site means desktop users log in with the exact
 // same account/credentials as the website — there is no separate
 // desktop-only backend or account system.
-const APP_URL = process.env.CREOVEYA_APP_URL || 'https://creoveya.onrender.com';
+const APP_URL = process.env.CREOVEYA_APP_URL || 'https://creoveyabetter.onrender.com';
 
 let mainWindow;
 
