@@ -18,8 +18,8 @@
 
 <div class="container" style="padding-top: 40px; padding-bottom: 60px; max-width: 760px;">
   <div class="text-center mb-16">
-    <h1>Choose a credit plan to get started</h1>
-    <p>Select a plan, complete payment, and upload your receipt. An admin will review and approve it — your dashboard unlocks right after.</p>
+    <h1>Choose an activation plan to get started</h1>
+    <p>Select an activation plan, complete payment, and upload your receipt. An admin will review and approve it — your dashboard unlocks right after.</p>
   </div>
 
   <div id="pendingNotice" class="card hidden" style="margin-bottom: 24px; border-color: var(--warning);">
@@ -69,7 +69,7 @@ let selectedMethodId = null;
 async function init() {
   const user = await getSession();
   if (!user) return window.location.href = '/login.html';
-  if (user.hasActiveAccess) return window.location.href = '/dashboard';
+  if (user.hasActiveAccess && !user.isTrialPlan) return window.location.href = '/dashboard';
 
   document.getElementById('logoutTop').addEventListener('click', async () => {
     await apiFetch('/auth/logout', { method: 'POST' });

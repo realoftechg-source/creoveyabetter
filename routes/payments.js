@@ -41,6 +41,8 @@ router.get('/plans', async (req, res, next) => {
         credits: p.credits,
         minutes: Number(p.minutes),
         description: p.description,
+        isTrial: Boolean(p.is_trial),
+        allowTopUp: Boolean(p.allow_top_up),
       })),
     });
   } catch (err) { next(err); }

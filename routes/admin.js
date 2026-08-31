@@ -16,6 +16,7 @@ function serializeUser(u) {
     isAdmin: Boolean(u.is_admin),
     isSuspended: Boolean(u.is_suspended),
     hasActiveAccess: Boolean(u.has_active_access),
+    isTrialPlan: Boolean(u.is_trial_plan),
     creditsBalance: u.credits_balance,
     secondsBalance: u.seconds_balance,
     createdAt: u.created_at,
@@ -122,19 +123,20 @@ router.delete('/users/:id', async (req, res, next) => {
 router.get('/plans', async (req, res, next) => {
   try {
     const plans = await db.all('SELECT * FROM credit_plans ORDER BY sort_order, price');
-    res.json({ ok: true, plans });
+    res.json({ ok: true, plans: plans.map((p) => ({ ...p, is_trial: Boolean(p.is_trial), allow_top_up: Boolean(p.allow_top_up), is_active: Boolean(p.is_active) })) });
   } catch (err) { next(err); }
 });
 
 router.post('/plans', async (req, res, next) => {
   try {
-    const { name, price, credits, minutes, description, sortOrder } = req.body;
+    const { name, price, credits, minutes, description, sortOrder, isTrial, allowTopUp, isActive } = req.body;
     if (!name || price == null || credits == null || minutes == null) {
       return res.status(400).json({ error: 'Name, price, credits, and minutes are all required.' });
     }
     const result = await db.run(
-      `INSERT INTO credit_plans (name, price, credits, minutes, description, sort_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-      [name, Number(price), Number(credits), Number(minutes), description || '', Number(sortOrder) || 0]
+      `INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [name, Number(price), Number(credits), Number(minutes), description || '', isTrial ? 1 : 0, allowTopUp === false ? 0 : 1, isActive === false ? 0 : 1, Number(sortOrder) || 0]
     );
     res.json({ ok: true, id: result.id });
   } catch (err) { next(err); }
@@ -144,15 +146,17 @@ router.put('/plans/:id', async (req, res, next) => {
   try {
     const plan = await db.get('SELECT * FROM credit_plans WHERE id = ?', [req.params.id]);
     if (!plan) return res.status(404).json({ error: 'Plan not found.' });
-    const { name, price, credits, minutes, description, sortOrder, isActive } = req.body;
+    const { name, price, credits, minutes, description, sortOrder, isActive, isTrial, allowTopUp } = req.body;
     await db.run(
-      `UPDATE credit_plans SET name = ?, price = ?, credits = ?, minutes = ?, description = ?, sort_order = ?, is_active = ? WHERE id = ?`,
+      `UPDATE credit_plans SET name = ?, price = ?, credits = ?, minutes = ?, description = ?, is_trial = ?, allow_top_up = ?, sort_order = ?, is_active = ? WHERE id = ?`,
       [
         name ?? plan.name,
         price != null ? Number(price) : plan.price,
         credits != null ? Number(credits) : plan.credits,
         minutes != null ? Number(minutes) : plan.minutes,
         description ?? plan.description,
+        isTrial != null ? (isTrial ? 1 : 0) : plan.is_trial,
+        allowTopUp != null ? (allowTopUp ? 1 : 0) : plan.allow_top_up,
         sortOrder != null ? Number(sortOrder) : plan.sort_order,
         isActive != null ? (isActive ? 1 : 0) : plan.is_active,
         plan.id,
@@ -277,8 +281,10 @@ router.post('/payments/:id/approve', async (req, res, next) => {
     if (!plan) return res.status(400).json({ error: 'The plan for this submission no longer exists.' });
 
     const addSeconds = Math.round(Number(plan.minutes) * 60);
-    await db.run('UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ?, has_active_access = 1 WHERE id = ?',
-      [plan.credits, addSeconds, submission.user_id]);
+    await db.run(
+      'UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ?, has_active_access = 1, current_plan_id = ?, is_trial_plan = ? WHERE id = ?',
+      [plan.credits, addSeconds, plan.id, plan.is_trial ? 1 : 0, submission.user_id]
+    );
 
     await db.run(`UPDATE payment_submissions SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
       [req.user.id, submission.id]);

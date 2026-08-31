@@ -187,14 +187,14 @@ function openCreateUserModal() {
 function openAddCreditsModal(userId) {
   const user = cache.users.find((u) => u.id === userId);
   openModal(`
-    <div class="modal-header"><h3>Add Credits — ${user.username}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-header"><h3>Add Top-Up Credits — ${user.username}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
     <p class="text-muted">Current: ${user.creditsBalance.toLocaleString()} credits · ${formatMinutes(user.secondsBalance)} remaining.</p>
     <form id="addCreditsForm">
       <div class="grid grid-2">
         <div class="form-group"><label>Add Credits</label><input type="number" id="addCredits" value="0"></div>
         <div class="form-group"><label>Add Minutes</label><input type="number" id="addMinutes" value="0"></div>
       </div>
-      <button type="submit" class="btn btn-primary btn-block">Save</button>
+      <button type="submit" class="btn btn-primary btn-block">Add Top-Up</button>
     </form>
   `);
   document.getElementById('addCreditsForm').addEventListener('submit', async (e) => {
@@ -289,6 +289,7 @@ async function renderPlans() {
       </div>
       <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900);">$${p.price}</div>
       <p>${p.credits.toLocaleString()} credits · ${p.minutes} min</p>
+      ${p.is_trial ? '<span class="badge badge-warning">Trial</span>' : '<span class="badge badge-neutral">Full Access</span>'}
       ${p.description ? `<p class="text-muted">${p.description}</p>` : ''}
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline btn-sm" onclick='openPlanModal(${JSON.stringify(p)})'>Edit</button>
@@ -316,6 +317,12 @@ function openPlanModal(plan) {
       <div class="form-group" style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="pActive" ${p.is_active ? 'checked' : ''} style="width:auto;"><label for="pActive" style="margin:0;">Visible on payment page</label>
       </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="pTrial" ${p.is_trial ? 'checked' : ''} style="width:auto;"><label for="pTrial" style="margin:0;">Mark as trial plan</label>
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="pTopUp" ${p.allow_top_up === undefined || p.allow_top_up ? 'checked' : ''} style="width:auto;"><label for="pTopUp" style="margin:0;">Allow top-up purchase</label>
+      </div>
       <button type="submit" class="btn btn-primary btn-block">${plan ? 'Save Changes' : 'Create Plan'}</button>
     </form>
   `);
@@ -329,6 +336,8 @@ function openPlanModal(plan) {
       description: document.getElementById('pDesc').value,
       sortOrder: document.getElementById('pSort').value,
       isActive: document.getElementById('pActive').checked,
+      isTrial: document.getElementById('pTrial').checked,
+      allowTopUp: document.getElementById('pTopUp').checked,
     };
     if (plan) await apiFetch(`/api/admin/plans/${plan.id}`, { method: 'PUT', body });
     else await apiFetch('/api/admin/plans', { method: 'POST', body });

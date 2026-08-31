@@ -16,7 +16,7 @@ const SLIDES = [
   { eyebrow: 'OBS READY', title: 'Pipe straight into OBS.', text: 'Add your transformed feed as a Browser Source and go out to any platform.', img: unsplash('photo-1623281295661-1c8fcc5140dd') },
   { eyebrow: 'CONTENT CREATION', title: 'Built for creators and educators.', text: 'Present lessons or content with a consistent, professional on-camera presence.', img: unsplash('photo-1633410465502-6eaa81fdf5eb') },
   { eyebrow: 'PRO SETUP', title: 'Studio-grade, from your desk.', text: 'No green screen, no render farm — just your webcam and Creoveya.', img: unsplash('photo-1760278042167-2e42c883e087') },
-  { eyebrow: 'FLEXIBLE PLANS', title: 'Pay only for what you stream.', text: 'Simple credit plans by bank transfer or crypto — no subscriptions required.', img: unsplash('photo-1676208974216-59348ecd9e15') },
+  { eyebrow: 'FLEXIBLE PLANS', title: 'Activate your access in minutes.', text: 'Simple activation plans by bank transfer or crypto — no subscriptions required.', img: unsplash('photo-1676208974216-59348ecd9e15') },
   { eyebrow: 'GO LIVE NOW', title: 'Your AI studio is one click away.', text: 'Create an account, choose a plan, and you could be live in minutes.', img: unsplash('photo-1636294155447-b1a63a5cb084') },
 ];
 

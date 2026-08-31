@@ -54,6 +54,7 @@ app.get('/api/me', requireLogin, (req, res) => {
       isAdmin: Boolean(req.user.is_admin),
       hasActiveAccess: Boolean(req.user.has_active_access),
       isSuspended: Boolean(req.user.is_suspended),
+      isTrialPlan: Boolean(req.user.is_trial_plan),
       creditsBalance: req.user.credits_balance,
       secondsBalance: req.user.seconds_balance,
     },
@@ -94,10 +95,13 @@ app.get('/admin_dashboard/admin.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'admin_assets', 'admin.js'));
 });
 app.get('/payment', pageGuard(), (req, res) => {
-  if (req.user.has_active_access) return res.redirect('/dashboard');
+  if (req.user.is_admin) return res.redirect('/admin_dashboard');
+  if (req.user.has_active_access && !req.user.is_trial_plan) return res.redirect('/dashboard');
   res.sendFile(path.join(__dirname, 'public', 'payment.html'));
 });
 app.get('/payment-topup.html', pageGuard(), (req, res) => {
+  if (req.user.is_admin) return res.redirect('/admin_dashboard');
+  if (!req.user.has_active_access || req.user.is_trial_plan) return res.redirect('/payment');
   res.sendFile(path.join(__dirname, 'public', 'payment-topup.html'));
 });
 

@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
   has_active_access INTEGER NOT NULL DEFAULT 0,
   credits_balance INTEGER NOT NULL DEFAULT 0,
   seconds_balance INTEGER NOT NULL DEFAULT 0,
+  current_plan_id INTEGER REFERENCES credit_plans(id) ON DELETE SET NULL,
+  is_trial_plan INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -73,6 +75,8 @@ CREATE TABLE IF NOT EXISTS credit_plans (
   credits INTEGER NOT NULL,
   minutes NUMERIC NOT NULL,
   description TEXT DEFAULT '',
+  is_trial INTEGER NOT NULL DEFAULT 0,
+  allow_top_up INTEGER NOT NULL DEFAULT 1,
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -148,6 +152,13 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 async function initDb() {
   await pool.query(SCHEMA_SQL);
 
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS current_plan_id INTEGER REFERENCES credit_plans(id) ON DELETE SET NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_trial_plan INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS is_trial INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS allow_top_up INTEGER NOT NULL DEFAULT 1;
+  `);
+
   const settingsRow = await get('SELECT * FROM platform_settings WHERE id = 1');
   if (!settingsRow) {
     await run(`INSERT INTO platform_settings (id, decart_api_key_override, support_telegram_username, credits_per_minute, site_name)
@@ -156,10 +167,10 @@ async function initDb() {
 
   const planCount = (await get('SELECT COUNT(*) AS c FROM credit_plans')).c;
   if (Number(planCount) === 0) {
-    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_active, sort_order)
-                VALUES (?, ?, ?, ?, ?, 1, ?)`, ['Starter', 20, 300, 6, 'Great for trying out AI live transformation.', 1]);
-    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_active, sort_order)
-                VALUES (?, ?, ?, ?, ?, 1, ?)`, ['Creator', 75, 5000, 25, 'For regular streamers who need more runtime.', 2]);
+    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Trial', 10, 300, 6, 'Entry activation for a first-time user.', 1, 0, 1, 1]);
+    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Creator', 75, 5000, 25, 'For regular streamers who need more runtime.', 0, 1, 1, 2]);
   }
 
   const adminCount = (await get('SELECT COUNT(*) AS c FROM users WHERE is_admin = 1')).c;

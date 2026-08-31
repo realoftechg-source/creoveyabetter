@@ -9,19 +9,25 @@
 async function apiFetch(url, options = {}) {
   const fetchOptions = {
     method: options.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
     credentials: 'include',
   };
 
-  if (options.body) {
-    fetchOptions.body = JSON.stringify(options.body);
+  if (options.body instanceof FormData) {
+    fetchOptions.body = options.body;
+  } else {
+    fetchOptions.headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    if (options.body !== undefined && options.body !== null) {
+      fetchOptions.body = JSON.stringify(options.body);
+    }
   }
 
   const res = await fetch(url, fetchOptions);
-  const data = await res.json();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
 
   if (!res.ok) {
     throw new Error(data.error || `API error: ${res.status}`);

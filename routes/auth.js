@@ -12,6 +12,7 @@ function publicUser(user) {
     isAdmin: Boolean(user.is_admin),
     hasActiveAccess: Boolean(user.has_active_access),
     isSuspended: Boolean(user.is_suspended),
+    isTrialPlan: Boolean(user.is_trial_plan),
     creditsBalance: user.credits_balance,
     secondsBalance: user.seconds_balance,
   };

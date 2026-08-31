@@ -18,8 +18,8 @@
 
 <div class="container" style="padding-top: 40px; padding-bottom: 60px; max-width: 760px;">
   <div class="text-center mb-16">
-    <h1>Buy more credits</h1>
-    <p>Select a plan, complete payment, and upload your receipt. An admin will review and approve it — your dashboard unlocks right after.</p>
+    <h1>Add a top-up activation plan</h1>
+    <p>Select a plan, complete payment, and upload your receipt. An admin will review and approve it — your credits will be added after approval.</p>
   </div>
 
   <div id="pendingNotice" class="card hidden" style="margin-bottom: 24px; border-color: var(--warning);">
@@ -69,6 +69,7 @@ let selectedMethodId = null;
 async function init() {
   const user = await getSession();
   if (!user) return window.location.href = '/login.html';
+  if (!user.hasActiveAccess || user.isTrialPlan) return window.location.href = '/payment';
 
   const [plansData, methodsData, subsData] = await Promise.all([
     apiFetch('/api/payments/plans'),
