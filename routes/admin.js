@@ -4,6 +4,7 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { sendApprovalEmail, sendTopUpEmail } = require('../utils/email');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -57,9 +58,10 @@ router.get('/users', async (req, res, next) => {
 router.post('/users', async (req, res, next) => {
   try {
     const username = (req.body.username || '').trim();
+    const email = (req.body.email || '').trim();
     const password = req.body.password || '';
-    if (!username || password.length < 8) {
-      return res.status(400).json({ error: 'Username and an 8+ character password are required.' });
+    if (!username || !email || password.length < 8) {
+      return res.status(400).json({ error: 'Username, email, and an 8+ character password are required.' });
     }
     const existing = await db.get('SELECT id FROM users WHERE username = ?', [username]);
     if (existing) return res.status(400).json({ error: 'Username already taken.' });
@@ -88,6 +90,7 @@ router.post('/users/:id/credits', async (req, res, next) => {
 
     await db.run('UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ?, has_active_access = 1 WHERE id = ?',
       [addCredits, addSeconds, user.id]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'admin_top_up', JSON.stringify({ addCredits, addMinutes: addMinutes })]);
 
     const updated = await db.get('SELECT * FROM users WHERE id = ?', [user.id]);
     res.json({ ok: true, user: serializeUser(updated) });
@@ -123,20 +126,29 @@ router.delete('/users/:id', async (req, res, next) => {
 router.get('/plans', async (req, res, next) => {
   try {
     const plans = await db.all('SELECT * FROM credit_plans ORDER BY sort_order, price');
-    res.json({ ok: true, plans: plans.map((p) => ({ ...p, is_trial: Boolean(p.is_trial), allow_top_up: Boolean(p.allow_top_up), is_active: Boolean(p.is_active) })) });
+    res.json({ ok: true, plans: plans.map((p) => ({
+      ...p,
+      badge_text: p.badge_text || '',
+      tagline: p.tagline || '',
+      features: p.features ? p.features.split('|').filter(Boolean) : [],
+      is_trial: Boolean(p.is_trial),
+      allow_top_up: Boolean(p.allow_top_up),
+      is_featured: Boolean(p.is_featured),
+      is_active: Boolean(p.is_active),
+    })) });
   } catch (err) { next(err); }
 });
 
 router.post('/plans', async (req, res, next) => {
   try {
-    const { name, price, credits, minutes, description, sortOrder, isTrial, allowTopUp, isActive } = req.body;
+    const { name, price, credits, minutes, description, sortOrder, isTrial, allowTopUp, isActive, badgeText, tagline, features, isFeatured } = req.body;
     if (!name || price == null || credits == null || minutes == null) {
       return res.status(400).json({ error: 'Name, price, credits, and minutes are all required.' });
     }
     const result = await db.run(
-      `INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [name, Number(price), Number(credits), Number(minutes), description || '', isTrial ? 1 : 0, allowTopUp === false ? 0 : 1, isActive === false ? 0 : 1, Number(sortOrder) || 0]
+      `INSERT INTO credit_plans (name, badge_text, tagline, price, credits, minutes, description, features, is_trial, allow_top_up, is_featured, is_active, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [name, badgeText || '', tagline || '', Number(price), Number(credits), Number(minutes), description || '', Array.isArray(features) ? features.join('|') : (features || ''), isTrial ? 1 : 0, allowTopUp === false ? 0 : 1, isFeatured ? 1 : 0, isActive === false ? 0 : 1, Number(sortOrder) || 0]
     );
     res.json({ ok: true, id: result.id });
   } catch (err) { next(err); }
@@ -146,17 +158,21 @@ router.put('/plans/:id', async (req, res, next) => {
   try {
     const plan = await db.get('SELECT * FROM credit_plans WHERE id = ?', [req.params.id]);
     if (!plan) return res.status(404).json({ error: 'Plan not found.' });
-    const { name, price, credits, minutes, description, sortOrder, isActive, isTrial, allowTopUp } = req.body;
+    const { name, price, credits, minutes, description, sortOrder, isActive, isTrial, allowTopUp, badgeText, tagline, features, isFeatured } = req.body;
     await db.run(
-      `UPDATE credit_plans SET name = ?, price = ?, credits = ?, minutes = ?, description = ?, is_trial = ?, allow_top_up = ?, sort_order = ?, is_active = ? WHERE id = ?`,
+      `UPDATE credit_plans SET name = ?, badge_text = ?, tagline = ?, price = ?, credits = ?, minutes = ?, description = ?, features = ?, is_trial = ?, allow_top_up = ?, is_featured = ?, sort_order = ?, is_active = ? WHERE id = ?`,
       [
         name ?? plan.name,
+        badgeText ?? plan.badge_text ?? '',
+        tagline ?? plan.tagline ?? '',
         price != null ? Number(price) : plan.price,
         credits != null ? Number(credits) : plan.credits,
         minutes != null ? Number(minutes) : plan.minutes,
         description ?? plan.description,
+        Array.isArray(features) ? features.join('|') : (features ?? plan.features ?? ''),
         isTrial != null ? (isTrial ? 1 : 0) : plan.is_trial,
         allowTopUp != null ? (allowTopUp ? 1 : 0) : plan.allow_top_up,
+        isFeatured != null ? (isFeatured ? 1 : 0) : plan.is_featured,
         sortOrder != null ? Number(sortOrder) : plan.sort_order,
         isActive != null ? (isActive ? 1 : 0) : plan.is_active,
         plan.id,
@@ -289,6 +305,10 @@ router.post('/payments/:id/approve', async (req, res, next) => {
     await db.run(`UPDATE payment_submissions SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
       [req.user.id, submission.id]);
 
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [submission.user_id]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'payment_approved', JSON.stringify({ planId: plan.id, planName: plan.name, amount: submission.amount })]);
+    await sendApprovalEmail(user, plan);
+
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -301,6 +321,9 @@ router.post('/payments/:id/reject', async (req, res, next) => {
 
     await db.run(`UPDATE payment_submissions SET status = 'rejected', admin_note = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
       [req.body.note || '', req.user.id, submission.id]);
+
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [submission.user_id]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'payment_rejected', JSON.stringify({ reason: req.body.note || 'No note provided' })]);
 
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -337,6 +360,40 @@ router.post('/settings', async (req, res, next) => {
       b.siteName ?? current.site_name,
     ]);
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// User Activity History
+// ---------------------------------------------------------------------------
+router.get('/activity', async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 100, 1000);
+    const rows = await db.all(`
+      SELECT ua.id, ua.user_id, ua.action, ua.details, ua.created_at, u.username
+      FROM user_activity ua
+      JOIN users u ON u.id = ua.user_id
+      ORDER BY ua.created_at DESC
+      LIMIT ?
+    `, [limit]);
+    res.json({ ok: true, activity: rows });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// User Uploaded Images (Looks Gallery)
+// ---------------------------------------------------------------------------
+router.get('/images', async (req, res, next) => {
+  try {
+    const rows = await db.all(`
+      SELECT l.id, l.user_id, l.name, l.prompt, l.image_path, l.created_at, u.username
+      FROM looks l
+      JOIN users u ON u.id = l.user_id
+      WHERE l.image_path IS NOT NULL
+      ORDER BY l.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ ok: true, images: rows });
   } catch (err) { next(err); }
 });
 

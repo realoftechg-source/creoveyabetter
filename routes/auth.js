@@ -18,13 +18,15 @@ function publicUser(user) {
   };
 }
 
+const { sendWelcomeEmail } = require('../utils/email');
+
 router.post('/register', async (req, res, next) => {
   try {
     const username = (req.body.username || '').trim();
     const email = (req.body.email || '').trim();
     const password = req.body.password || '';
 
-    if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
+    if (!username || !email || !password) return res.status(400).json({ error: 'Username, email, and password are required.' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
     const existing = await db.get('SELECT id FROM users WHERE username = ?', [username]);
@@ -39,6 +41,8 @@ router.post('/register', async (req, res, next) => {
 
     req.session.userId = result.id;
     const user = await db.get('SELECT * FROM users WHERE id = ?', [result.id]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'registered', JSON.stringify({ email: user.email })]);
+    await sendWelcomeEmail(user);
     res.json({ ok: true, user: publicUser(user) });
   } catch (err) { next(err); }
 });
@@ -57,6 +61,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     req.session.userId = user.id;
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'login', JSON.stringify({ username: user.username })]);
     res.json({ ok: true, user: publicUser(user) });
   } catch (err) { next(err); }
 });

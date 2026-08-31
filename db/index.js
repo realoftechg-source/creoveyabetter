@@ -71,12 +71,16 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS credit_plans (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
+  badge_text TEXT DEFAULT '',
+  tagline TEXT DEFAULT '',
   price NUMERIC NOT NULL,
   credits INTEGER NOT NULL,
   minutes NUMERIC NOT NULL,
   description TEXT DEFAULT '',
+  features TEXT DEFAULT '',
   is_trial INTEGER NOT NULL DEFAULT 0,
   allow_top_up INTEGER NOT NULL DEFAULT 1,
+  is_featured INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -147,6 +151,14 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   message TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS user_activity (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  details JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `;
 
 async function initDb() {
@@ -155,8 +167,12 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS current_plan_id INTEGER REFERENCES credit_plans(id) ON DELETE SET NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_trial_plan INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS badge_text TEXT DEFAULT '';
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS tagline TEXT DEFAULT '';
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS features TEXT DEFAULT '';
     ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS is_trial INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS allow_top_up INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE credit_plans ADD COLUMN IF NOT EXISTS is_featured INTEGER NOT NULL DEFAULT 0;
   `);
 
   const settingsRow = await get('SELECT * FROM platform_settings WHERE id = 1');
@@ -167,10 +183,10 @@ async function initDb() {
 
   const planCount = (await get('SELECT COUNT(*) AS c FROM credit_plans')).c;
   if (Number(planCount) === 0) {
-    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Trial', 10, 300, 6, 'Entry activation for a first-time user.', 1, 0, 1, 1]);
-    await run(`INSERT INTO credit_plans (name, price, credits, minutes, description, is_trial, allow_top_up, is_active, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Creator', 75, 5000, 25, 'For regular streamers who need more runtime.', 0, 1, 1, 2]);
+    await run(`INSERT INTO credit_plans (name, badge_text, tagline, price, credits, minutes, description, features, is_trial, allow_top_up, is_featured, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Trial', 'Most Popular', 'Best for first-time creators', 10, 300, 6, 'Entry activation for a first-time user.', 'Access to all AI engines|Full dashboard & session history|Simple pay-as-you-go activation', 1, 0, 1, 1, 1]);
+    await run(`INSERT INTO credit_plans (name, badge_text, tagline, price, credits, minutes, description, features, is_trial, allow_top_up, is_featured, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Full Access', 'Best Value', 'For regular streamers who need more runtime', 65, 5000, 25, 'Unlimited access to the full AI studio.', 'Access to all AI engines|Full dashboard & session history|Priority support', 0, 1, 1, 1, 2]);
   }
 
   const adminCount = (await get('SELECT COUNT(*) AS c FROM users WHERE is_admin = 1')).c;

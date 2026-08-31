@@ -5,6 +5,8 @@ const SECTIONS = {
   overview: { title: 'Overview', subtitle: 'Platform activity at a glance.' },
   users: { title: 'Users', subtitle: 'Manage every account on the platform.' },
   payments: { title: 'Payment Approvals', subtitle: 'Review and approve/reject submitted payments.' },
+  activity: { title: 'Activity History', subtitle: 'See all user actions, logins, and transactions.' },
+  images: { title: 'User Images', subtitle: 'View all face transformation images uploaded by users.' },
   plans: { title: 'Credit Plans', subtitle: 'Create and manage the plans shown on the payment page.' },
   methods: { title: 'Payment Methods', subtitle: 'Manage bank accounts (up to 3) and crypto wallets (up to 4).' },
   settings: { title: 'Platform Settings', subtitle: 'Decart API key, Telegram support username, and global credit rate.' },
@@ -42,7 +44,7 @@ function switchSection(section) {
 }
 
 function renderSection(section) {
-  const map = { overview: renderOverview, users: renderUsers, payments: renderPayments, plans: renderPlans, methods: renderMethods, settings: renderSettings };
+  const map = { overview: renderOverview, users: renderUsers, payments: renderPayments, activity: renderActivity, images: renderImages, plans: renderPlans, methods: renderMethods, settings: renderSettings };
   map[section]();
 }
 
@@ -266,8 +268,82 @@ async function rejectPayment(id) {
 }
 
 // ===========================================================================
-// CREDIT PLANS
+// ACTIVITY HISTORY
 // ===========================================================================
+async function renderActivity() {
+  const content = document.getElementById('sectionContent');
+  content.innerHTML = '<p class="text-muted">Loading…</p>';
+  const data = await apiFetch('/api/admin/activity?limit=500');
+  const activity = data.activity || [];
+
+  content.innerHTML = `
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Action</th><th>Details</th><th>Date</th></tr></thead>
+          <tbody>
+            ${activity.length ? activity.map((a) => {
+              let details = '';
+              if (a.details && typeof a.details === 'string') {
+                try {
+                  const d = JSON.parse(a.details);
+                  details = Object.entries(d).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' | ');
+                } catch (e) {
+                  details = a.details;
+                }
+              }
+              return `<tr>
+                <td><strong>${a.username}</strong></td>
+                <td><span class="badge badge-neutral">${a.action}</span></td>
+                <td class="text-muted" style="font-size:.85rem; max-width:300px; word-break:break-word;">${details || '—'}</td>
+                <td>${new Date(a.created_at).toLocaleString()}</td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="4" class="text-muted">No activity yet.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ===========================================================================
+// USER IMAGES GALLERY
+// ===========================================================================
+async function renderImages() {
+  const content = document.getElementById('sectionContent');
+  content.innerHTML = '<p class="text-muted">Loading…</p>';
+  const data = await apiFetch('/api/admin/images');
+  const images = data.images || [];
+
+  if (!images.length) {
+    content.innerHTML = '<p class="text-muted">No images uploaded yet.</p>';
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="card">
+      <p class="text-muted mb-16">Showing ${images.length} uploaded face transformation images.</p>
+      <div class="grid grid-4" id="imagesGrid"></div>
+    </div>`;
+
+  const grid = document.getElementById('imagesGrid');
+  grid.innerHTML = images.map((img) => `
+    <div class="card" style="cursor:pointer;" onclick="openImagePreview('${img.image_path}', '${img.username}', '${img.name}')">
+      <img src="/uploads/looks/${img.image_path}" alt="${img.name}" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:4px; margin-bottom:8px;">
+      <p style="margin:0; font-size:.85rem;"><strong>${img.name}</strong></p>
+      <p style="margin:0; font-size:.78rem; color:var(--text-muted);">By ${img.username}</p>
+      <p style="margin:0; font-size:.78rem; color:var(--text-muted);">${new Date(img.created_at).toLocaleDateString()}</p>
+    </div>
+  `).join('');
+}
+
+function openImagePreview(imagePath, username, name) {
+  openModal(`
+    <div class="modal-header"><h3>${name} — by ${username}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <img src="/uploads/looks/${imagePath}" alt="${name}" style="width:100%; max-height:70vh; object-fit:contain; border-radius:4px;">
+  `);
+}
+
+
 async function renderPlans() {
   const content = document.getElementById('sectionContent');
   content.innerHTML = '<p class="text-muted">Loading…</p>';
@@ -283,14 +359,20 @@ async function renderPlans() {
 
   document.getElementById('plansContainer').innerHTML = cache.plans.map((p) => `
     <div class="card">
-      <div class="flex justify-between items-start">
+      <div class="flex justify-between items-start mb-8">
         <h3 style="margin-bottom:4px;">${p.name}</h3>
-        ${p.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Hidden</span>'}
+        <div class="flex gap-4" style="flex-wrap:wrap; justify-content:flex-end;">
+          ${p.is_featured ? '<span class="badge badge-success">Featured</span>' : ''}
+          ${p.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Hidden</span>'}
+        </div>
       </div>
-      <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900);">$${p.price}</div>
+      ${p.badge_text ? `<span class="badge badge-warning">${p.badge_text}</span>` : ''}
+      <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${p.price}</div>
+      <p style="margin:4px 0; color:var(--text-muted); font-size:.9rem;">${p.tagline || ''}</p>
       <p>${p.credits.toLocaleString()} credits · ${p.minutes} min</p>
       ${p.is_trial ? '<span class="badge badge-warning">Trial</span>' : '<span class="badge badge-neutral">Full Access</span>'}
-      ${p.description ? `<p class="text-muted">${p.description}</p>` : ''}
+      ${p.description ? `<p class="text-muted" style="margin-top:8px; margin-bottom:8px;">${p.description}</p>` : ''}
+      ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.85rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline btn-sm" onclick='openPlanModal(${JSON.stringify(p)})'>Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deletePlan(${p.id})">Delete</button>
@@ -300,7 +382,7 @@ async function renderPlans() {
 }
 
 function openPlanModal(plan) {
-  const p = plan || { name: '', price: '', credits: '', minutes: '', description: '', sort_order: 0, is_active: 1 };
+  const p = plan || { name: '', price: '', credits: '', minutes: '', description: '', badge_text: '', tagline: '', features: '', sort_order: 0, is_active: 1, is_featured: 0, is_trial: 0, allow_top_up: 1 };
   openModal(`
     <div class="modal-header"><h3>${plan ? 'Edit' : 'Create'} Plan</h3><button class="modal-close" onclick="closeModal()">×</button></div>
     <form id="planForm">
@@ -313,9 +395,15 @@ function openPlanModal(plan) {
         <div class="form-group"><label>Credits</label><input type="number" id="pCredits" value="${p.credits}" required></div>
         <div class="form-group"><label>Minutes</label><input type="number" step="0.1" id="pMinutes" value="${p.minutes}" required></div>
       </div>
-      <div class="form-group"><label>Description (optional)</label><textarea id="pDesc">${p.description || ''}</textarea></div>
+      <div class="form-group"><label>Description (optional)</label><textarea id="pDesc" placeholder="Short description shown on the plan card">${p.description || ''}</textarea></div>
+      <div class="form-group"><label>Badge Text (optional)</label><input type="text" id="pBadge" value="${p.badge_text || ''}" placeholder="e.g. Most Popular"></div>
+      <div class="form-group"><label>Tagline (optional)</label><input type="text" id="pTagline" value="${p.tagline || ''}" placeholder="e.g. Best value for creators"></div>
+      <div class="form-group"><label>Features (one per line, optional)</label><textarea id="pFeatures" placeholder="Access to all AI engines&#10;Full dashboard&#10;Priority support">${Array.isArray(p.features) ? p.features.join('\n') : (p.features || '')}</textarea></div>
       <div class="form-group" style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="pActive" ${p.is_active ? 'checked' : ''} style="width:auto;"><label for="pActive" style="margin:0;">Visible on payment page</label>
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="pFeatured" ${p.is_featured ? 'checked' : ''} style="width:auto;"><label for="pFeatured" style="margin:0;">Highlight as featured plan</label>
       </div>
       <div class="form-group" style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="pTrial" ${p.is_trial ? 'checked' : ''} style="width:auto;"><label for="pTrial" style="margin:0;">Mark as trial plan</label>
@@ -328,14 +416,19 @@ function openPlanModal(plan) {
   `);
   document.getElementById('planForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const featuresText = document.getElementById('pFeatures').value.split('\n').filter(f => f.trim());
     const body = {
       name: document.getElementById('pName').value,
       price: document.getElementById('pPrice').value,
       credits: document.getElementById('pCredits').value,
       minutes: document.getElementById('pMinutes').value,
       description: document.getElementById('pDesc').value,
+      badgeText: document.getElementById('pBadge').value,
+      tagline: document.getElementById('pTagline').value,
+      features: featuresText,
       sortOrder: document.getElementById('pSort').value,
       isActive: document.getElementById('pActive').checked,
+      isFeatured: document.getElementById('pFeatured').checked,
       isTrial: document.getElementById('pTrial').checked,
       allowTopUp: document.getElementById('pTopUp').checked,
     };

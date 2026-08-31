@@ -37,12 +37,16 @@ router.get('/plans', async (req, res, next) => {
       plans: plans.map((p) => ({
         id: p.id,
         name: p.name,
+        badgeText: p.badge_text || '',
+        tagline: p.tagline || '',
         price: Number(p.price),
         credits: p.credits,
         minutes: Number(p.minutes),
         description: p.description,
+        features: p.features ? p.features.split('|').filter(Boolean) : [],
         isTrial: Boolean(p.is_trial),
         allowTopUp: Boolean(p.allow_top_up),
+        isFeatured: Boolean(p.is_featured),
       })),
     });
   } catch (err) { next(err); }
@@ -78,6 +82,10 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
 
     const plan = await db.get('SELECT * FROM credit_plans WHERE id = ? AND is_active = 1', [planId]);
     if (!plan) return res.status(400).json({ error: 'Invalid plan selected.' });
+    if (plan.is_trial && req.user.is_trial_plan) return res.status(400).json({ error: 'You are already on the trial activation plan.' });
+    if (plan.is_trial && !req.user.has_active_access) {
+      // allow initial trial signup only
+    }
 
     const method = await db.get('SELECT * FROM payment_methods WHERE id = ? AND is_active = 1', [methodId]);
     if (!method) return res.status(400).json({ error: 'Invalid payment method selected.' });
@@ -89,6 +97,8 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
        VALUES (?, ?, ?, ?, ?, 'pending')`,
       [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
     );
+
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [req.user.id, 'submitted_payment', JSON.stringify({ planId: plan.id, amount: plan.price, methodId: method.id })]);
 
     res.json({ ok: true, message: 'Payment submitted. An admin will review it shortly.' });
   } catch (err) { next(err); }
