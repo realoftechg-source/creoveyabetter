@@ -7,7 +7,9 @@ const SECTIONS = {
   payments: { title: 'Payment Approvals', subtitle: 'Review and approve/reject submitted payments.' },
   activity: { title: 'Activity History', subtitle: 'See all user actions, logins, and transactions.' },
   images: { title: 'User Images', subtitle: 'View all face transformation images uploaded by users.' },
-  plans: { title: 'Credit Plans', subtitle: 'Create and manage the plans shown on the payment page.' },
+  plans: { title: 'Activation Plans', subtitle: 'Create and manage the activation plans shown on the payment page.' },
+  topup: { title: 'Credit Top Up', subtitle: 'Manually add credits to any user account.' },
+  broadcast: { title: 'Broadcast Message', subtitle: 'Send an email message to all users at once.' },
   methods: { title: 'Payment Methods', subtitle: 'Manage bank accounts (up to 3) and crypto wallets (up to 4).' },
   settings: { title: 'Platform Settings', subtitle: 'Decart API key, Telegram support username, and global credit rate.' },
 };
@@ -44,7 +46,7 @@ function switchSection(section) {
 }
 
 function renderSection(section) {
-  const map = { overview: renderOverview, users: renderUsers, payments: renderPayments, activity: renderActivity, images: renderImages, plans: renderPlans, methods: renderMethods, settings: renderSettings };
+  const map = { overview: renderOverview, users: renderUsers, payments: renderPayments, activity: renderActivity, images: renderImages, plans: renderPlans, topup: renderTopUp, broadcast: renderBroadcast, methods: renderMethods, settings: renderSettings };
   map[section]();
 }
 
@@ -128,13 +130,14 @@ function renderUsersTable(filter) {
   if (!rows.length) { body.innerHTML = '<tr><td colspan="7" class="text-muted">No users found.</td></tr>'; return; }
   body.innerHTML = rows.map((u) => `
     <tr>
-      <td><strong>${u.username}</strong>${u.isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : ''}</td>
+      <td><strong>${u.username}</strong><br><span class="text-muted" style="font-size:.78rem;">${u.email || '—'}</span>${u.isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : ''}</td>
       <td>${u.creditsBalance.toLocaleString()}</td>
       <td>${formatMinutes(u.secondsBalance)}</td>
       <td>${u.isSuspended ? '<span class="badge badge-danger">Suspended</span>' : '<span class="badge badge-success">Active</span>'}</td>
       <td>${u.hasActiveAccess ? '<span class="badge badge-success">Granted</span>' : '<span class="badge badge-warning">Pending</span>'}</td>
       <td>${new Date(u.createdAt).toLocaleDateString()}</td>
       <td class="flex gap-8">
+        <button class="btn btn-outline btn-sm" onclick="openUserDetailsModal(${JSON.stringify(u)})">Details</button>
         ${!u.isAdmin ? `
           <button class="btn btn-outline btn-sm" onclick="openAddCreditsModal(${u.id})">+ Credits</button>
           <button class="btn btn-outline btn-sm" onclick="toggleSuspend(${u.id})">${u.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
@@ -265,6 +268,136 @@ async function rejectPayment(id) {
   const note = prompt('Optional note for the rejection:') || '';
   await apiFetch(`/api/admin/payments/${id}/reject`, { method: 'POST', body: { note } });
   renderPayments();
+}
+
+function openUserDetailsModal(user) {
+  openModal(`
+    <div class="modal-header"><h3>${user.username} — Full Account Details</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:.95rem;">
+      <div><label style="font-weight:600; color:var(--text-muted);">Username</label><p style="margin:4px 0;">${user.username}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Email</label><p style="margin:4px 0;">${user.email || '—'}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">User ID</label><p style="margin:4px 0;">${user.id}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Status</label><p style="margin:4px 0;">${user.isSuspended ? '<span class="badge badge-danger">Suspended</span>' : '<span class="badge badge-success">Active</span>'}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Credits Balance</label><p style="margin:4px 0;">${user.creditsBalance.toLocaleString()}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Time Remaining</label><p style="margin:4px 0;">${formatMinutes(user.secondsBalance)}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Dashboard Access</label><p style="margin:4px 0;">${user.hasActiveAccess ? '<span class="badge badge-success">Granted</span>' : '<span class="badge badge-warning">Pending</span>'}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Trial Plan</label><p style="margin:4px 0;">${user.isTrialPlan ? 'Yes' : 'No'}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Account Role</label><p style="margin:4px 0;">${user.isAdmin ? '<span class="badge badge-neutral">Admin</span>' : 'User'}</p></div>
+      <div><label style="font-weight:600; color:var(--text-muted);">Member Since</label><p style="margin:4px 0;">${new Date(user.createdAt).toLocaleString()}</p></div>
+    </div>
+  `);
+}
+
+// ===========================================================================
+// CREDIT TOP UP
+// ===========================================================================
+async function renderTopUp() {
+  const content = document.getElementById('sectionContent');
+  content.innerHTML = '<p class="text-muted">Loading…</p>';
+  const data = await apiFetch('/api/admin/users');
+  const users = data.users;
+
+  content.innerHTML = `
+    <div class="flex justify-between items-center mb-16" style="flex-wrap:wrap; gap:12px;">
+      <input type="text" id="topupUserSearch" placeholder="Search by username…" style="max-width:280px;">
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Username</th><th>Current Credits</th><th>Time Left</th><th></th></tr></thead>
+          <tbody id="topupBody"></tbody>
+        </table>
+      </div>
+    </div>`;
+
+  document.getElementById('topupUserSearch').addEventListener('input', (e) => renderTopUpTable(users, e.target.value));
+  renderTopUpTable(users, '');
+}
+
+function renderTopUpTable(users, filter) {
+  const body = document.getElementById('topupBody');
+  const rows = users.filter((u) => u.username.toLowerCase().includes(filter.toLowerCase()));
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="text-muted">No users found.</td></tr>'; return; }
+  body.innerHTML = rows.map((u) => `
+    <tr>
+      <td><strong>${u.username}</strong>${u.isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : ''}</td>
+      <td>${u.creditsBalance.toLocaleString()}</td>
+      <td>${formatMinutes(u.secondsBalance)}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="openQuickTopUpModal(${u.id}, '${u.username}')">+ Add Credits</button></td>
+    </tr>
+  `).join('');
+}
+
+function openQuickTopUpModal(userId, username) {
+  openModal(`
+    <div class="modal-header"><h3>Top Up Credits — ${username}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <form id="quickTopUpForm">
+      <div class="form-group"><label>Add Credits</label><input type="number" id="qtCredits" value="1000" required></div>
+      <div class="form-group"><label>Add Minutes</label><input type="number" id="qtMinutes" value="10" required></div>
+      <button type="submit" class="btn btn-primary btn-block">Add Top-Up</button>
+    </form>
+  `);
+  document.getElementById('quickTopUpForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await apiFetch(`/api/admin/users/${userId}/credits`, {
+      method: 'POST',
+      body: { addCredits: document.getElementById('qtCredits').value, addMinutes: document.getElementById('qtMinutes').value },
+    });
+    closeModal();
+    renderTopUp();
+  });
+}
+
+// ===========================================================================
+// BROADCAST MESSAGE
+// ===========================================================================
+async function renderBroadcast() {
+  const content = document.getElementById('sectionContent');
+  content.innerHTML = `
+    <div class="card" style="max-width:600px;">
+      <h3>Send Email to All Users</h3>
+      <p class="text-muted">This will send an email to every user on the platform. Use carefully!</p>
+      <div class="error-banner" id="broadcastError"></div>
+      <div class="success-banner" id="broadcastSuccess"></div>
+      <form id="broadcastForm">
+        <div class="form-group">
+          <label>Email Subject</label>
+          <input type="text" id="bSubject" placeholder="e.g. Important Platform Update" required>
+        </div>
+        <div class="form-group">
+          <label>Email Message</label>
+          <textarea id="bMessage" placeholder="Your message here..." required style="min-height:200px;"></textarea>
+        </div>
+        <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="bConfirm" style="width:auto;" required>
+          <label for="bConfirm" style="margin:0;">I confirm sending this to all users</label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Send Broadcast</button>
+      </form>
+    </div>
+  `;
+  document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('broadcastError');
+    const okEl = document.getElementById('broadcastSuccess');
+    errEl.classList.remove('show');
+    okEl.classList.remove('show');
+    
+    if (!confirm('This will send an email to ALL users. Are you absolutely sure?')) return;
+    
+    try {
+      await apiFetch('/api/admin/broadcast', {
+        method: 'POST',
+        body: { subject: document.getElementById('bSubject').value, message: document.getElementById('bMessage').value },
+      });
+      okEl.textContent = 'Broadcast sent successfully to all users!';
+      okEl.classList.add('show');
+      document.getElementById('broadcastForm').reset();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+    }
+  });
 }
 
 // ===========================================================================

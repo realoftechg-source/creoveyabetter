@@ -364,6 +364,40 @@ router.post('/settings', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// Broadcast Message (send email to all users)
+// ---------------------------------------------------------------------------
+router.post('/broadcast', async (req, res, next) => {
+  try {
+    const { subject, message } = req.body;
+    if (!subject || !message) {
+      return res.status(400).json({ error: 'Subject and message are required.' });
+    }
+
+    const users = await db.all('SELECT id, email FROM users WHERE is_deleted = 0 AND email IS NOT NULL');
+    const { sendMail } = require('../utils/email');
+    
+    let sent = 0;
+    for (const user of users) {
+      try {
+        await sendMail({
+          to: user.email,
+          subject,
+          text: message,
+          html: `<div style="font-family:Arial,sans-serif; color:#10193a; line-height:1.6;"><p>${message.replace(/\n/g, '<br>')}</p><hr style="border:none; border-top:1px solid #e3e9f5; margin:24px 0;"><p style="font-size:.85rem; color:#8794ac;">Sent from Creoveya</p></div>`,
+        });
+        sent++;
+      } catch (err) {
+        console.error(`[broadcast] Failed to send to ${user.email}:`, err.message);
+      }
+    }
+
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [req.user.id, 'broadcast_sent', JSON.stringify({ recipientCount: sent, subject })]);
+
+    res.json({ ok: true, sent, total: users.length });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
 // User Activity History
 // ---------------------------------------------------------------------------
 router.get('/activity', async (req, res, next) => {
