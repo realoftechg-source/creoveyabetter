@@ -103,29 +103,52 @@ router.get('/topup-plans', async (req, res, next) => {
 // Authenticated: submit a payment (plan + method + receipt upload).
 router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, next) => {
   try {
+    console.log('[payments/submit] User', req.user.id, 'submitting payment');
+    console.log('[payments/submit] Body:', { planId: req.body.planId, planType: req.body.planType, methodId: req.body.methodId });
+    console.log('[payments/submit] File:', req.file ? { filename: req.file.filename, size: req.file.size } : 'NO FILE');
+
     const planId = parseInt(req.body.planId, 10);
     const planType = req.body.planType || 'activation';
     const methodId = parseInt(req.body.methodId, 10);
 
     if (!planId || !methodId) {
+      console.warn('[payments/submit] Missing required fields');
       return res.status(400).json({ error: 'Plan ID and method ID are required.' });
     }
 
     let plan;
     if (planType === 'topup') {
       plan = await db.get('SELECT * FROM topup_plans WHERE id = ? AND is_active = 1', [planId]);
-      if (!plan) return res.status(400).json({ error: 'Invalid top-up plan selected.' });
-      if (!req.user.has_active_access) return res.status(400).json({ error: 'You must have an active account to purchase a top-up plan.' });
+      if (!plan) {
+        console.warn('[payments/submit] Topup plan', planId, 'not found or inactive');
+        return res.status(400).json({ error: 'Invalid top-up plan selected.' });
+      }
+      if (!req.user.has_active_access) {
+        console.warn('[payments/submit] User', req.user.id, 'lacks active access for topup');
+        return res.status(400).json({ error: 'You must have an active account to purchase a top-up plan.' });
+      }
     } else {
       plan = await db.get('SELECT * FROM credit_plans WHERE id = ? AND is_active = 1', [planId]);
-      if (!plan) return res.status(400).json({ error: 'Invalid plan selected.' });
-      if (plan.is_trial && req.user.is_trial_plan) return res.status(400).json({ error: 'You are already on the trial activation plan.' });
+      if (!plan) {
+        console.warn('[payments/submit] Activation plan', planId, 'not found or inactive');
+        return res.status(400).json({ error: 'Invalid plan selected.' });
+      }
+      if (plan.is_trial && req.user.is_trial_plan) {
+        console.warn('[payments/submit] User', req.user.id, 'already on trial');
+        return res.status(400).json({ error: 'You are already on the trial activation plan.' });
+      }
     }
 
     const method = await db.get('SELECT * FROM payment_methods WHERE id = ? AND is_active = 1', [methodId]);
-    if (!method) return res.status(400).json({ error: 'Invalid payment method selected.' });
+    if (!method) {
+      console.warn('[payments/submit] Payment method', methodId, 'not found or inactive');
+      return res.status(400).json({ error: 'Invalid payment method selected.' });
+    }
 
-    if (!req.file) return res.status(400).json({ error: 'A payment receipt/screenshot is required.' });
+    if (!req.file) {
+      console.warn('[payments/submit] No receipt file uploaded');
+      return res.status(400).json({ error: 'A payment receipt/screenshot is required.' });
+    }
 
     const receiptPath = path.basename(req.file.path);
     const amount = Number(plan.price);
@@ -136,12 +159,14 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [req.user.id, plan.id, 'topup', method.id, amount, receiptPath, 'pending']
       );
+      console.log('[payments/submit] ✓ Created topup submission for user', req.user.id);
     } else {
       await db.run(
         `INSERT INTO payment_submissions (user_id, plan_id, plan_type, method_id, amount, receipt_path, status)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [req.user.id, plan.id, 'activation', method.id, amount, receiptPath, 'pending']
       );
+      console.log('[payments/submit] ✓ Created activation submission for user', req.user.id);
     }
 
     await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, 
@@ -150,7 +175,7 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
 
     res.json({ ok: true, message: 'Payment submitted. An admin will review it shortly.' });
   } catch (err) { 
-    console.error('[payments/submit] Error:', err.message);
+    console.error('[payments/submit] Error:', err.message, err.stack);
     next(err); 
   }
 });
