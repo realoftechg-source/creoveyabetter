@@ -103,6 +103,10 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
     const planType = req.body.planType || 'activation';
     const methodId = parseInt(req.body.methodId, 10);
 
+    if (!planId || !methodId) {
+      return res.status(400).json({ error: 'Plan ID and method ID are required.' });
+    }
+
     let plan;
     if (planType === 'topup') {
       plan = await db.get('SELECT * FROM topup_plans WHERE id = ? AND is_active = 1', [planId]);
@@ -119,24 +123,32 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
 
     if (!req.file) return res.status(400).json({ error: 'A payment receipt/screenshot is required.' });
 
+    const receiptPath = path.basename(req.file.path);
+    const amount = Number(plan.price);
+
     if (planType === 'topup') {
       await db.run(
         `INSERT INTO payment_submissions (user_id, topup_plan_id, plan_type, method_id, amount, receipt_path, status)
-         VALUES (?, ?, 'topup', ?, ?, ?, 'pending')`,
-        [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [req.user.id, plan.id, 'topup', method.id, amount, receiptPath, 'pending']
       );
     } else {
       await db.run(
         `INSERT INTO payment_submissions (user_id, plan_id, plan_type, method_id, amount, receipt_path, status)
-         VALUES (?, ?, 'activation', ?, ?, ?, 'pending')`,
-        [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [req.user.id, plan.id, 'activation', method.id, amount, receiptPath, 'pending']
       );
     }
 
-    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [req.user.id, 'submitted_payment', JSON.stringify({ planId: plan.id, planType, amount: plan.price, methodId: method.id })]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, 
+      [req.user.id, 'submitted_payment', JSON.stringify({ planId: plan.id, planType, amount, methodId: method.id })]
+    );
 
     res.json({ ok: true, message: 'Payment submitted. An admin will review it shortly.' });
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('[payments/submit] Error:', err.message);
+    next(err); 
+  }
 });
 
 // Authenticated: serves a receipt image, but only to the user who

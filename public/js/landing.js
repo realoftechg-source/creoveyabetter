@@ -168,16 +168,27 @@ async function loadTopUpPlans() {
     document.getElementById('topupPlansGrid').innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
   }
 }
-loadPlans();
-loadTopUpPlans();
 
-// -----------------------------------------------------------------------
-// Telegram support link (admin-configurable, not hardcoded)
-// -----------------------------------------------------------------------
-apiFetch('/api/pages/telegram-link').then((data) => {
-  const link = document.getElementById('telegramLink');
-  if (data.url) link.href = data.url;
-}).catch(() => {});
+// Initialize when DOM is ready (or immediately if already ready)
+function initLanding() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      loadPlans();
+      loadTopUpPlans();
+    });
+  } else {
+    loadPlans();
+    loadTopUpPlans();
+  }
+
+  // Load Telegram link
+  apiFetch('/api/pages/telegram-link').then((data) => {
+    const link = document.getElementById('telegramLink');
+    if (data.url) link.href = data.url;
+  }).catch(() => {});
+}
+
+initLanding();
 
 // -----------------------------------------------------------------------
 // Contact form
