@@ -3,10 +3,39 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
+const fs = require('fs');
 const path = require('path');
 
 const db = require('./db'); // exposes .pool, used below for the session store too
 const { loadUser, requireLogin, requireAdmin } = require('./middleware/auth');
+
+async function renderTopUpPlansHtml() {
+  try {
+    const plans = await db.all('SELECT * FROM topup_plans WHERE is_active = 1 ORDER BY sort_order, price');
+    if (!plans.length) {
+      return '<p class="text-muted text-center">No top-up plans available right now.</p>';
+    }
+
+    return plans.map((p, i) => `
+      <div class="card" style="animation: fadeInUp .5s ease-out ${i * 0.1}s backwards;">
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+          <h3 style="margin:0;">${p.name}</h3>
+          ${p.is_featured ? '<span class="badge badge-success">Featured</span>' : ''}
+        </div>
+        ${p.badge_text ? `<span class="badge badge-warning">${p.badge_text}</span>` : ''}
+        <div style="font-size:2rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${Number(p.price)}</div>
+        <p><strong>${Number(p.credits).toLocaleString()} credits</strong> · ${Number(p.minutes)} minutes</p>
+        ${p.tagline ? `<p class="text-muted">${p.tagline}</p>` : ''}
+        ${p.description ? `<p class="text-muted" style="font-size:.9rem;">${p.description}</p>` : ''}
+        ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.9rem; color:var(--text-muted);">${String(p.features).split('|').filter(Boolean).map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
+        <a href="/payment.html" class="btn btn-outline btn-block">Buy Now</a>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('[server] renderTopUpPlansHtml failed:', err);
+    return '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +90,13 @@ app.get('/api/me', requireLogin, (req, res) => {
   });
 });
 
+app.get('/', async (req, res) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  const html = await fs.promises.readFile(indexPath, 'utf8');
+  const rendered = html.replace('__TOPUP_PLANS_HTML__', await renderTopUpPlansHtml());
+  res.send(rendered);
+});
+
 // ---------------------------------------------------------------------------
 // Static frontend
 // ---------------------------------------------------------------------------
@@ -104,8 +140,6 @@ app.get('/payment-topup.html', pageGuard(), (req, res) => {
   if (!req.user.has_active_access || req.user.is_trial_plan) return res.redirect('/payment');
   res.sendFile(path.join(__dirname, 'public', 'payment-topup.html'));
 });
-
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.use((req, res) => res.status(404).sendFile(path.join(__dirname, 'public', '404.html')));
 

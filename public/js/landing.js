@@ -142,65 +142,35 @@ async function loadPlans() {
 
 async function loadTopUpPlans() {
   const grid = document.getElementById('topupPlansGrid');
-  if (!grid) {
-    console.error('ERROR: topupPlansGrid element not found in DOM');
-    return;
-  }
+  if (!grid) return;
 
   try {
-    console.log('[loadTopUpPlans] Fetching from /api/payments/topup-plans...');
     const data = await apiFetch('/api/payments/topup-plans');
-    console.log('[loadTopUpPlans] Response:', data);
-    
-    if (!data) {
-      console.error('[loadTopUpPlans] No data returned from API');
-      grid.innerHTML = '<p class="text-muted text-center">Could not load top-up plans.</p>';
-      return;
-    }
+    const plans = data && Array.isArray(data.plans) ? data.plans : [];
 
-    const plans = data.plans || [];
-    console.log('[loadTopUpPlans] Found', plans.length, 'plans');
-
-    if (plans.length === 0) {
-      console.log('[loadTopUpPlans] No plans to display');
-      grid.innerHTML = '<p class="text-muted text-center">No top-up plans available right now — admin will add some soon.</p>';
-      return;
-    }
-
-    console.log('[loadTopUpPlans] Rendering', plans.length, 'plans');
-    const html = plans.map((p, i) => {
-      if (!p || !p.name) {
-        console.warn('[loadTopUpPlans] Invalid plan object:', p);
-        return '';
-      }
-      return `
-        <div class="card" style="animation: fadeInUp .5s ease-out ${i * 0.1}s backwards;">
-          <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
-            <h3 style="margin:0;">${p.name}</h3>
-            ${p.isFeatured ? '<span class="badge badge-success">Featured</span>' : ''}
-          </div>
-          ${p.badgeText ? `<span class="badge badge-warning">${p.badgeText}</span>` : ''}
-          <div style="font-size:2rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${p.price}</div>
-          <p><strong>${p.credits.toLocaleString()} credits</strong> · ${p.minutes} minutes</p>
-          ${p.tagline ? `<p class="text-muted">${p.tagline}</p>` : ''}
-          ${p.description ? `<p class="text-muted" style="font-size:.9rem;">${p.description}</p>` : ''}
-          ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.9rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
-          <a href="/payment.html" class="btn btn-outline btn-block">Buy Now</a>
-        </div>
-      `;
-    }).filter(Boolean).join('');
-    
-    if (!html) {
-      console.warn('[loadTopUpPlans] No valid HTML generated');
+    if (!plans.length) {
       grid.innerHTML = '<p class="text-muted text-center">No top-up plans available right now.</p>';
       return;
     }
 
-    grid.innerHTML = html;
-    console.log('[loadTopUpPlans] ✓ Successfully rendered top-up plans');
+    grid.innerHTML = plans.map((p, i) => `
+      <div class="card" style="animation: fadeInUp .5s ease-out ${i * 0.1}s backwards;">
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+          <h3 style="margin:0;">${p.name}</h3>
+          ${p.isFeatured ? '<span class="badge badge-success">Featured</span>' : ''}
+        </div>
+        ${p.badgeText ? `<span class="badge badge-warning">${p.badgeText}</span>` : ''}
+        <div style="font-size:2rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${p.price}</div>
+        <p><strong>${p.credits.toLocaleString()} credits</strong> · ${p.minutes} minutes</p>
+        ${p.tagline ? `<p class="text-muted">${p.tagline}</p>` : ''}
+        ${p.description ? `<p class="text-muted" style="font-size:.9rem;">${p.description}</p>` : ''}
+        ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.9rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
+        <a href="/payment.html" class="btn btn-outline btn-block">Buy Now</a>
+      </div>
+    `).join('');
   } catch (e) {
-    console.error('[loadTopUpPlans] Error:', e);
-    grid.innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now. Error: ' + (e.message || 'Unknown error') + '</p>';
+    console.error('loadTopUpPlans error', e);
+    grid.innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
   }
 }
 
