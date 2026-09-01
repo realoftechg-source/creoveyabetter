@@ -142,24 +142,13 @@ async function loadPlans() {
 
 async function loadTopUpPlans() {
   try {
-    console.log('Loading top-up plans...');
     const data = await apiFetch('/api/payments/topup-plans');
-    console.log('Top-up plans response:', data);
-    
     const grid = document.getElementById('topupPlansGrid');
-    if (!grid) {
-      console.error('topupPlansGrid element not found!');
-      return;
-    }
-
     if (!data || !data.plans || data.plans.length === 0) {
-      console.log('No top-up plans returned from API');
-      grid.innerHTML = '<div style="grid-column: 1/-1;"><p class="text-muted text-center">No top-up plans available right now — admin will add some soon.</p></div>';
+      grid.innerHTML = '<p class="text-muted text-center">No top-up plans available right now — admin will add some soon.</p>';
       return;
     }
-
-    console.log(`Rendering ${data.plans.length} top-up plans`);
-    const html = data.plans.map((p, i) => `
+    grid.innerHTML = data.plans.map((p, i) => `
       <div class="card" style="animation: fadeInUp .5s ease-out ${i * 0.1}s backwards;">
         <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
           <h3 style="margin:0;">${p.name}</h3>
@@ -174,36 +163,23 @@ async function loadTopUpPlans() {
         <a href="/payment.html" class="btn btn-outline btn-block">Buy Now</a>
       </div>
     `).join('');
-    grid.innerHTML = html;
   } catch (e) {
     console.error('Failed to load top-up plans:', e);
-    const grid = document.getElementById('topupPlansGrid');
-    if (grid) {
-      grid.innerHTML = '<div style="grid-column: 1/-1;"><p class="text-muted text-center">Could not load top-up plans right now.</p></div>';
-    }
+    document.getElementById('topupPlansGrid').innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
   }
 }
 
-// Initialize when DOM is ready (or immediately if already ready)
-function initLanding() {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      loadPlans();
-      loadTopUpPlans();
-    });
-  } else {
-    loadPlans();
-    loadTopUpPlans();
-  }
+// Initialize landing page — load both plan types immediately
+loadPlans();
+loadTopUpPlans();
 
-  // Load Telegram link
-  apiFetch('/api/pages/telegram-link').then((data) => {
-    const link = document.getElementById('telegramLink');
-    if (data.url) link.href = data.url;
-  }).catch(() => {});
-}
-
-initLanding();
+// -----------------------------------------------------------------------
+// Telegram support link (admin-configurable, not hardcoded)
+// -----------------------------------------------------------------------
+apiFetch('/api/pages/telegram-link').then((data) => {
+  const link = document.getElementById('telegramLink');
+  if (data.url) link.href = data.url;
+}).catch(() => {});
 
 // -----------------------------------------------------------------------
 // Contact form
