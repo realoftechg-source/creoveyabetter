@@ -126,32 +126,53 @@ let selectedMethodId = null;
 async function init() {
   const user = await getSession();
   if (!user) return window.location.href = '/login.html';
-  if (user.hasActiveAccess && !user.isTrialPlan) {
-    // User has active access but not trial — show only topup plans
-    const topupData = await apiFetch('/api/payments/topup-plans');
-    topupPlans = topupData.plans;
-    renderTopupOnly(topupPlans);
-    return;
-  }
 
   document.getElementById('logoutTop').addEventListener('click', async () => {
     await apiFetch('/auth/logout', { method: 'POST' });
     window.location.href = '/';
   });
 
-  const [plansData, topupData, methodsData, subsData] = await Promise.all([
-    apiFetch('/api/payments/plans'),
-    apiFetch('/api/payments/topup-plans'),
-    apiFetch('/api/payments/methods'),
-    apiFetch('/api/payments/my-submissions'),
-  ]);
-  plans = plansData.plans;
-  topupPlans = topupData.plans;
-  methods = methodsData.methods;
+  try {
+    // Always load activation plans first - this is critical
+    const plansData = await apiFetch('/api/payments/plans');
+    plans = plansData.plans || [];
+  } catch (err) {
+    console.error('Failed to load activation plans:', err);
+    plans = [];
+  }
 
-  const hasPending = subsData.submissions.some((s) => s.status === 'pending');
-  if (hasPending) document.getElementById('pendingNotice').classList.remove('hidden');
+  try {
+    // Load topup plans - but don't break if this fails
+    const topupData = await apiFetch('/api/payments/topup-plans');
+    topupPlans = topupData.plans || [];
+  } catch (err) {
+    console.error('Failed to load topup plans:', err);
+    topupPlans = [];
+  }
 
+  try {
+    const methodsData = await apiFetch('/api/payments/methods');
+    methods = methodsData.methods || [];
+  } catch (err) {
+    console.error('Failed to load payment methods:', err);
+    methods = [];
+  }
+
+  try {
+    const subsData = await apiFetch('/api/payments/my-submissions');
+    const hasPending = subsData.submissions && subsData.submissions.some((s) => s.status === 'pending');
+    if (hasPending) document.getElementById('pendingNotice').classList.remove('hidden');
+  } catch (err) {
+    console.error('Failed to load submissions:', err);
+  }
+
+  // Check if user already has active access (for showing topup only)
+  if (user.hasActiveAccess && !user.isTrialPlan) {
+    renderTopupOnly(topupPlans);
+    return;
+  }
+
+  // Otherwise show normal flow
   renderPlans();
   if (topupPlans.length) renderTopupPlans();
 }

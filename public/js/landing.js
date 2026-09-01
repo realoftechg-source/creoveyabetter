@@ -121,7 +121,7 @@ async function loadPlans() {
   try {
     const data = await apiFetch('/api/payments/plans');
     const grid = document.getElementById('plansGrid');
-    if (!data.plans.length) {
+    if (!data || !data.plans || data.plans.length === 0) {
       grid.innerHTML = '<p class="text-muted text-center">No plans are available right now — check back soon.</p>';
       return;
     }
@@ -135,6 +135,7 @@ async function loadPlans() {
       </div>
     `).join('');
   } catch (e) {
+    console.error('Failed to load activation plans:', e);
     document.getElementById('plansGrid').innerHTML = '<p class="text-muted text-center">Could not load plans right now.</p>';
   }
 }
