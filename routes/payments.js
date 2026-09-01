@@ -78,6 +78,7 @@ router.get('/methods', async (req, res, next) => {
 router.get('/topup-plans', async (req, res, next) => {
   try {
     const plans = await db.all('SELECT * FROM topup_plans WHERE is_active = 1 ORDER BY sort_order, price');
+    console.log('[payments/topup-plans] Found', plans.length, 'active top-up plans');
     res.json({
       ok: true,
       plans: plans.map((p) => ({
@@ -93,7 +94,10 @@ router.get('/topup-plans', async (req, res, next) => {
         isFeatured: Boolean(p.is_featured),
       })),
     });
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('[payments/topup-plans] Error:', err.message);
+    next(err); 
+  }
 });
 
 // Authenticated: submit a payment (plan + method + receipt upload).

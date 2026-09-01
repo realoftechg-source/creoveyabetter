@@ -381,6 +381,7 @@ router.post('/settings', async (req, res, next) => {
 router.get('/topup-plans', async (req, res, next) => {
   try {
     const plans = await db.all('SELECT * FROM topup_plans ORDER BY sort_order, price');
+    console.log('[admin/topup-plans] Retrieved', plans.length, 'topup plans');
     res.json({ ok: true, plans: plans.map((p) => ({
       ...p,
       badge_text: p.badge_text || '',
@@ -389,7 +390,10 @@ router.get('/topup-plans', async (req, res, next) => {
       is_featured: Boolean(p.is_featured),
       is_active: Boolean(p.is_active),
     })) });
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('[admin/topup-plans GET] Error:', err.message);
+    next(err); 
+  }
 });
 
 router.post('/topup-plans', async (req, res, next) => {
@@ -403,8 +407,12 @@ router.post('/topup-plans', async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [name, badgeText || '', tagline || '', Number(price), Number(credits), Number(minutes), description || '', Array.isArray(features) ? features.join('|') : (features || ''), isFeatured ? 1 : 0, isActive === false ? 0 : 1, Number(sortOrder) || 0]
     );
+    console.log('[admin/topup-plans POST] Created plan:', name, 'with ID:', result.id);
     res.json({ ok: true, id: result.id });
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('[admin/topup-plans POST] Error:', err.message);
+    next(err); 
+  }
 });
 
 router.put('/topup-plans/:id', async (req, res, next) => {
