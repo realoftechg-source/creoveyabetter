@@ -138,7 +138,36 @@ async function loadPlans() {
     document.getElementById('plansGrid').innerHTML = '<p class="text-muted text-center">Could not load plans right now.</p>';
   }
 }
+
+async function loadTopUpPlans() {
+  try {
+    const data = await apiFetch('/api/payments/topup-plans');
+    const grid = document.getElementById('topupPlansGrid');
+    if (!data.plans.length) {
+      grid.innerHTML = '<p class="text-muted text-center">No top-up plans available right now.</p>';
+      return;
+    }
+    grid.innerHTML = data.plans.map((p, i) => `
+      <div class="card" style="animation: fadeInUp .5s ease-out ${i * 0.1}s backwards;">
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+          <h3 style="margin:0;">${p.name}</h3>
+          ${p.isFeatured ? '<span class="badge badge-success">Featured</span>' : ''}
+        </div>
+        ${p.badgeText ? `<span class="badge badge-warning">${p.badgeText}</span>` : ''}
+        <div style="font-size:2rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${p.price}</div>
+        <p><strong>${p.credits.toLocaleString()} credits</strong> · ${p.minutes} minutes</p>
+        ${p.tagline ? `<p class="text-muted">${p.tagline}</p>` : ''}
+        ${p.description ? `<p class="text-muted" style="font-size:.9rem;">${p.description}</p>` : ''}
+        ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.9rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
+        <a href="/payment.html" class="btn btn-outline btn-block">Buy Now</a>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('topupPlansGrid').innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
+  }
+}
 loadPlans();
+loadTopUpPlans();
 
 // -----------------------------------------------------------------------
 // Telegram support link (admin-configurable, not hardcoded)

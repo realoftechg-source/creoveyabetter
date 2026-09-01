@@ -291,62 +291,102 @@ function openUserDetailsModal(user) {
 // ===========================================================================
 // CREDIT TOP UP
 // ===========================================================================
+// ===========================================================================
+// CREDIT TOP UP (manage top-up plans)
+// ===========================================================================
 async function renderTopUp() {
   const content = document.getElementById('sectionContent');
   content.innerHTML = '<p class="text-muted">Loading…</p>';
-  const data = await apiFetch('/api/admin/users');
-  const users = data.users;
+  const data = await apiFetch('/api/admin/topup-plans');
+  cache.topupPlans = data.plans;
 
   content.innerHTML = `
-    <div class="flex justify-between items-center mb-16" style="flex-wrap:wrap; gap:12px;">
-      <input type="text" id="topupUserSearch" placeholder="Search by username…" style="max-width:280px;">
+    <div class="flex justify-between items-center mb-16">
+      <p class="text-muted" style="margin:0;">Create top-up plans that users can purchase to extend their usage time.</p>
+      <button class="btn btn-primary btn-sm" onclick="openTopUpPlanModal()">+ Create Top-Up Plan</button>
     </div>
+    <div class="grid grid-3" id="topupPlansContainer"></div>`;
+
+  document.getElementById('topupPlansContainer').innerHTML = cache.topupPlans.map((p) => `
     <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Username</th><th>Current Credits</th><th>Time Left</th><th></th></tr></thead>
-          <tbody id="topupBody"></tbody>
-        </table>
+      <div class="flex justify-between items-start mb-8">
+        <h3 style="margin-bottom:4px;">${p.name}</h3>
+        <div class="flex gap-4" style="flex-wrap:wrap; justify-content:flex-end;">
+          ${p.is_featured ? '<span class="badge badge-success">Featured</span>' : ''}
+          ${p.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Hidden</span>'}
+        </div>
       </div>
-    </div>`;
-
-  document.getElementById('topupUserSearch').addEventListener('input', (e) => renderTopUpTable(users, e.target.value));
-  renderTopUpTable(users, '');
+      ${p.badge_text ? `<span class="badge badge-warning">${p.badge_text}</span>` : ''}
+      <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900); margin:8px 0;">$${p.price}</div>
+      <p style="margin:4px 0; color:var(--text-muted); font-size:.9rem;">${p.tagline || ''}</p>
+      <p>${p.credits.toLocaleString()} credits · ${p.minutes} min</p>
+      ${p.description ? `<p class="text-muted" style="margin-top:8px; margin-bottom:8px;">${p.description}</p>` : ''}
+      ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.85rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-outline btn-sm" onclick='openTopUpPlanModal(${JSON.stringify(p)})'>Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTopUpPlan(${p.id})">Delete</button>
+      </div>
+    </div>
+  `).join('') || '<p class="text-muted">No top-up plans yet — create your first one.</p>';
 }
 
-function renderTopUpTable(users, filter) {
-  const body = document.getElementById('topupBody');
-  const rows = users.filter((u) => u.username.toLowerCase().includes(filter.toLowerCase()));
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="text-muted">No users found.</td></tr>'; return; }
-  body.innerHTML = rows.map((u) => `
-    <tr>
-      <td><strong>${u.username}</strong>${u.isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : ''}</td>
-      <td>${u.creditsBalance.toLocaleString()}</td>
-      <td>${formatMinutes(u.secondsBalance)}</td>
-      <td><button class="btn btn-primary btn-sm" onclick="openQuickTopUpModal(${u.id}, '${u.username}')">+ Add Credits</button></td>
-    </tr>
-  `).join('');
-}
-
-function openQuickTopUpModal(userId, username) {
+function openTopUpPlanModal(plan) {
+  const p = plan || { name: '', price: '', credits: '', minutes: '', description: '', badge_text: '', tagline: '', features: '', sort_order: 0, is_active: 1, is_featured: 0 };
   openModal(`
-    <div class="modal-header"><h3>Top Up Credits — ${username}</h3><button class="modal-close" onclick="closeModal()">×</button></div>
-    <form id="quickTopUpForm">
-      <div class="form-group"><label>Add Credits</label><input type="number" id="qtCredits" value="1000" required></div>
-      <div class="form-group"><label>Add Minutes</label><input type="number" id="qtMinutes" value="10" required></div>
-      <button type="submit" class="btn btn-primary btn-block">Add Top-Up</button>
+    <div class="modal-header"><h3>${plan ? 'Edit' : 'Create'} Top-Up Plan</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <form id="topupPlanForm">
+      <div class="form-group"><label>Name</label><input type="text" id="tpName" value="${p.name}" required></div>
+      <div class="grid grid-2">
+        <div class="form-group"><label>Price (USD)</label><input type="number" step="0.01" id="tpPrice" value="${p.price}" required></div>
+        <div class="form-group"><label>Sort Order</label><input type="number" id="tpSort" value="${p.sort_order ?? 0}"></div>
+      </div>
+      <div class="grid grid-2">
+        <div class="form-group"><label>Credits</label><input type="number" id="tpCredits" value="${p.credits}" required></div>
+        <div class="form-group"><label>Minutes</label><input type="number" step="0.1" id="tpMinutes" value="${p.minutes}" required></div>
+      </div>
+      <div class="form-group"><label>Description (optional)</label><textarea id="tpDesc" placeholder="Short description">${p.description || ''}</textarea></div>
+      <div class="form-group"><label>Badge Text (optional)</label><input type="text" id="tpBadge" value="${p.badge_text || ''}" placeholder="e.g. Best Value"></div>
+      <div class="form-group"><label>Tagline (optional)</label><input type="text" id="tpTagline" value="${p.tagline || ''}" placeholder="e.g. Get more time instantly"></div>
+      <div class="form-group"><label>Features (one per line, optional)</label><textarea id="tpFeatures" placeholder="5 minutes added instantly&#10;Never expires">${Array.isArray(p.features) ? p.features.join('\n') : (p.features || '')}</textarea></div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="tpActive" ${p.is_active ? 'checked' : ''} style="width:auto;"><label for="tpActive" style="margin:0;">Visible on payment page</label>
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="tpFeatured" ${p.is_featured ? 'checked' : ''} style="width:auto;"><label for="tpFeatured" style="margin:0;">Highlight as featured</label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">${plan ? 'Save Changes' : 'Create Plan'}</button>
     </form>
   `);
-  document.getElementById('quickTopUpForm').addEventListener('submit', async (e) => {
+  document.getElementById('topupPlanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    await apiFetch(`/api/admin/users/${userId}/credits`, {
-      method: 'POST',
-      body: { addCredits: document.getElementById('qtCredits').value, addMinutes: document.getElementById('qtMinutes').value },
-    });
+    const featuresText = document.getElementById('tpFeatures').value.split('\n').filter(f => f.trim());
+    const body = {
+      name: document.getElementById('tpName').value,
+      price: document.getElementById('tpPrice').value,
+      credits: document.getElementById('tpCredits').value,
+      minutes: document.getElementById('tpMinutes').value,
+      description: document.getElementById('tpDesc').value,
+      badgeText: document.getElementById('tpBadge').value,
+      tagline: document.getElementById('tpTagline').value,
+      features: featuresText,
+      sortOrder: document.getElementById('tpSort').value,
+      isActive: document.getElementById('tpActive').checked,
+      isFeatured: document.getElementById('tpFeatured').checked,
+    };
+    if (plan) await apiFetch(`/api/admin/topup-plans/${plan.id}`, { method: 'PUT', body });
+    else await apiFetch('/api/admin/topup-plans', { method: 'POST', body });
     closeModal();
     renderTopUp();
   });
 }
+
+async function deleteTopUpPlan(id) {
+  if (!confirm('Delete this top-up plan? It will no longer appear on the payment page.')) return;
+  await apiFetch(`/api/admin/topup-plans/${id}`, { method: 'DELETE' });
+  renderTopUp();
+}
+
+
 
 // ===========================================================================
 // BROADCAST MESSAGE

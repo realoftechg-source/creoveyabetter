@@ -293,20 +293,32 @@ router.post('/payments/:id/approve', async (req, res, next) => {
     if (!submission) return res.status(404).json({ error: 'Submission not found.' });
     if (submission.status !== 'pending') return res.status(400).json({ error: 'Already reviewed.' });
 
-    const plan = await db.get('SELECT * FROM credit_plans WHERE id = ?', [submission.plan_id]);
-    if (!plan) return res.status(400).json({ error: 'The plan for this submission no longer exists.' });
-
-    const addSeconds = Math.round(Number(plan.minutes) * 60);
-    await db.run(
-      'UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ?, has_active_access = 1, current_plan_id = ?, is_trial_plan = ? WHERE id = ?',
-      [plan.credits, addSeconds, plan.id, plan.is_trial ? 1 : 0, submission.user_id]
-    );
+    let plan, planName;
+    if (submission.plan_type === 'topup') {
+      plan = await db.get('SELECT * FROM topup_plans WHERE id = ?', [submission.topup_plan_id]);
+      if (!plan) return res.status(400).json({ error: 'The top-up plan for this submission no longer exists.' });
+      planName = plan.name;
+      const addSeconds = Math.round(Number(plan.minutes) * 60);
+      await db.run(
+        'UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ? WHERE id = ?',
+        [plan.credits, addSeconds, submission.user_id]
+      );
+    } else {
+      plan = await db.get('SELECT * FROM credit_plans WHERE id = ?', [submission.plan_id]);
+      if (!plan) return res.status(400).json({ error: 'The plan for this submission no longer exists.' });
+      planName = plan.name;
+      const addSeconds = Math.round(Number(plan.minutes) * 60);
+      await db.run(
+        'UPDATE users SET credits_balance = credits_balance + ?, seconds_balance = seconds_balance + ?, has_active_access = 1, current_plan_id = ?, is_trial_plan = ? WHERE id = ?',
+        [plan.credits, addSeconds, plan.id, plan.is_trial ? 1 : 0, submission.user_id]
+      );
+    }
 
     await db.run(`UPDATE payment_submissions SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
       [req.user.id, submission.id]);
 
     const user = await db.get('SELECT * FROM users WHERE id = ?', [submission.user_id]);
-    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'payment_approved', JSON.stringify({ planId: plan.id, planName: plan.name, amount: submission.amount })]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [user.id, 'payment_approved', JSON.stringify({ planId: plan.id, planName, amount: submission.amount, planType: submission.plan_type })]);
     await sendApprovalEmail(user, plan);
 
     res.json({ ok: true });
@@ -359,6 +371,71 @@ router.post('/settings', async (req, res, next) => {
       b.creditsPerMinute != null ? Number(b.creditsPerMinute) : current.credits_per_minute,
       b.siteName ?? current.site_name,
     ]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// Top-Up Plans
+// ---------------------------------------------------------------------------
+router.get('/topup-plans', async (req, res, next) => {
+  try {
+    const plans = await db.all('SELECT * FROM topup_plans ORDER BY sort_order, price');
+    res.json({ ok: true, plans: plans.map((p) => ({
+      ...p,
+      badge_text: p.badge_text || '',
+      tagline: p.tagline || '',
+      features: p.features ? p.features.split('|').filter(Boolean) : [],
+      is_featured: Boolean(p.is_featured),
+      is_active: Boolean(p.is_active),
+    })) });
+  } catch (err) { next(err); }
+});
+
+router.post('/topup-plans', async (req, res, next) => {
+  try {
+    const { name, price, credits, minutes, description, sortOrder, isActive, badgeText, tagline, features, isFeatured } = req.body;
+    if (!name || price == null || credits == null || minutes == null) {
+      return res.status(400).json({ error: 'Name, price, credits, and minutes are all required.' });
+    }
+    const result = await db.run(
+      `INSERT INTO topup_plans (name, badge_text, tagline, price, credits, minutes, description, features, is_featured, is_active, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [name, badgeText || '', tagline || '', Number(price), Number(credits), Number(minutes), description || '', Array.isArray(features) ? features.join('|') : (features || ''), isFeatured ? 1 : 0, isActive === false ? 0 : 1, Number(sortOrder) || 0]
+    );
+    res.json({ ok: true, id: result.id });
+  } catch (err) { next(err); }
+});
+
+router.put('/topup-plans/:id', async (req, res, next) => {
+  try {
+    const plan = await db.get('SELECT * FROM topup_plans WHERE id = ?', [req.params.id]);
+    if (!plan) return res.status(404).json({ error: 'Plan not found.' });
+    const { name, price, credits, minutes, description, sortOrder, isActive, badgeText, tagline, features, isFeatured } = req.body;
+    await db.run(
+      `UPDATE topup_plans SET name = ?, badge_text = ?, tagline = ?, price = ?, credits = ?, minutes = ?, description = ?, features = ?, is_featured = ?, sort_order = ?, is_active = ? WHERE id = ?`,
+      [
+        name ?? plan.name,
+        badgeText ?? plan.badge_text ?? '',
+        tagline ?? plan.tagline ?? '',
+        price != null ? Number(price) : plan.price,
+        credits != null ? Number(credits) : plan.credits,
+        minutes != null ? Number(minutes) : plan.minutes,
+        description ?? plan.description,
+        Array.isArray(features) ? features.join('|') : (features ?? plan.features ?? ''),
+        isFeatured != null ? (isFeatured ? 1 : 0) : plan.is_featured,
+        sortOrder != null ? Number(sortOrder) : plan.sort_order,
+        isActive != null ? (isActive ? 1 : 0) : plan.is_active,
+        plan.id,
+      ]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.delete('/topup-plans/:id', async (req, res, next) => {
+  try {
+    await db.run('DELETE FROM topup_plans WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

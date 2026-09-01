@@ -74,17 +74,44 @@ router.get('/methods', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Public: active top-up plans shown on the homepage/payment page.
+router.get('/topup-plans', async (req, res, next) => {
+  try {
+    const plans = await db.all('SELECT * FROM topup_plans WHERE is_active = 1 ORDER BY sort_order, price');
+    res.json({
+      ok: true,
+      plans: plans.map((p) => ({
+        id: p.id,
+        name: p.name,
+        badgeText: p.badge_text || '',
+        tagline: p.tagline || '',
+        price: Number(p.price),
+        credits: p.credits,
+        minutes: Number(p.minutes),
+        description: p.description,
+        features: p.features ? p.features.split('|').filter(Boolean) : [],
+        isFeatured: Boolean(p.is_featured),
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 // Authenticated: submit a payment (plan + method + receipt upload).
 router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, next) => {
   try {
     const planId = parseInt(req.body.planId, 10);
+    const planType = req.body.planType || 'activation';
     const methodId = parseInt(req.body.methodId, 10);
 
-    const plan = await db.get('SELECT * FROM credit_plans WHERE id = ? AND is_active = 1', [planId]);
-    if (!plan) return res.status(400).json({ error: 'Invalid plan selected.' });
-    if (plan.is_trial && req.user.is_trial_plan) return res.status(400).json({ error: 'You are already on the trial activation plan.' });
-    if (plan.is_trial && !req.user.has_active_access) {
-      // allow initial trial signup only
+    let plan;
+    if (planType === 'topup') {
+      plan = await db.get('SELECT * FROM topup_plans WHERE id = ? AND is_active = 1', [planId]);
+      if (!plan) return res.status(400).json({ error: 'Invalid top-up plan selected.' });
+      if (!req.user.has_active_access) return res.status(400).json({ error: 'You must have an active account to purchase a top-up plan.' });
+    } else {
+      plan = await db.get('SELECT * FROM credit_plans WHERE id = ? AND is_active = 1', [planId]);
+      if (!plan) return res.status(400).json({ error: 'Invalid plan selected.' });
+      if (plan.is_trial && req.user.is_trial_plan) return res.status(400).json({ error: 'You are already on the trial activation plan.' });
     }
 
     const method = await db.get('SELECT * FROM payment_methods WHERE id = ? AND is_active = 1', [methodId]);
@@ -92,13 +119,21 @@ router.post('/submit', requireLogin, upload.single('receipt'), async (req, res, 
 
     if (!req.file) return res.status(400).json({ error: 'A payment receipt/screenshot is required.' });
 
-    await db.run(
-      `INSERT INTO payment_submissions (user_id, plan_id, method_id, amount, receipt_path, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
-    );
+    if (planType === 'topup') {
+      await db.run(
+        `INSERT INTO payment_submissions (user_id, topup_plan_id, plan_type, method_id, amount, receipt_path, status)
+         VALUES (?, ?, 'topup', ?, ?, ?, 'pending')`,
+        [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
+      );
+    } else {
+      await db.run(
+        `INSERT INTO payment_submissions (user_id, plan_id, plan_type, method_id, amount, receipt_path, status)
+         VALUES (?, ?, 'activation', ?, ?, ?, 'pending')`,
+        [req.user.id, plan.id, method.id, plan.price, path.basename(req.file.path)]
+      );
+    }
 
-    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [req.user.id, 'submitted_payment', JSON.stringify({ planId: plan.id, amount: plan.price, methodId: method.id })]);
+    await db.run(`INSERT INTO user_activity (user_id, action, details) VALUES (?, ?, ?)`, [req.user.id, 'submitted_payment', JSON.stringify({ planId: plan.id, planType, amount: plan.price, methodId: method.id })]);
 
     res.json({ ok: true, message: 'Payment submitted. An admin will review it shortly.' });
   } catch (err) { next(err); }
@@ -121,8 +156,9 @@ router.get('/receipt/:submissionId', requireLogin, async (req, res, next) => {
 router.get('/my-submissions', requireLogin, async (req, res, next) => {
   try {
     const rows = await db.all(
-      `SELECT ps.*, cp.name AS plan_name FROM payment_submissions ps
+      `SELECT ps.*, COALESCE(cp.name, tp.name) AS plan_name FROM payment_submissions ps
        LEFT JOIN credit_plans cp ON cp.id = ps.plan_id
+       LEFT JOIN topup_plans tp ON tp.id = ps.topup_plan_id
        WHERE ps.user_id = ? ORDER BY ps.created_at DESC`,
       [req.user.id]
     );

@@ -81,6 +81,13 @@
     <div class="grid grid-2" id="planOptions"></div>
   </div>
 
+  <!-- Top-Up Plans (if already activated) -->
+  <div class="card mb-16 hidden" id="stepTopUp">
+    <h3>Or add credits anytime with a top-up plan</h3>
+    <p class="text-muted">Already have an active account? Top up your credits instantly.</p>
+    <div class="grid grid-2" id="topupPlanOptions"></div>
+  </div>
+
   <!-- Step 2: Method -->
   <div class="card mb-16 hidden" id="stepMethod">
     <h3>2. Choose a payment method</h3>
@@ -110,37 +117,57 @@
 <script src="/js/common.js"></script>
 <script>
 let plans = [];
+let topupPlans = [];
 let methods = [];
 let selectedPlanId = null;
+let selectedPlanType = 'activation'; // 'activation' or 'topup'
 let selectedMethodId = null;
 
 async function init() {
   const user = await getSession();
   if (!user) return window.location.href = '/login.html';
-  if (user.hasActiveAccess && !user.isTrialPlan) return window.location.href = '/dashboard';
+  if (user.hasActiveAccess && !user.isTrialPlan) {
+    // User has active access but not trial — show only topup plans
+    const topupData = await apiFetch('/api/payments/topup-plans');
+    topupPlans = topupData.plans;
+    renderTopupOnly(topupPlans);
+    return;
+  }
 
   document.getElementById('logoutTop').addEventListener('click', async () => {
     await apiFetch('/auth/logout', { method: 'POST' });
     window.location.href = '/';
   });
 
-  const [plansData, methodsData, subsData] = await Promise.all([
+  const [plansData, topupData, methodsData, subsData] = await Promise.all([
     apiFetch('/api/payments/plans'),
+    apiFetch('/api/payments/topup-plans'),
     apiFetch('/api/payments/methods'),
     apiFetch('/api/payments/my-submissions'),
   ]);
   plans = plansData.plans;
+  topupPlans = topupData.plans;
   methods = methodsData.methods;
 
   const hasPending = subsData.submissions.some((s) => s.status === 'pending');
   if (hasPending) document.getElementById('pendingNotice').classList.remove('hidden');
 
   renderPlans();
+  if (topupPlans.length) renderTopupPlans();
+}
+
+function renderTopupOnly(topupPlans) {
+  // For users who already have activation, show only topup section
+  document.getElementById('stepPlan').classList.add('hidden');
+  document.getElementById('stepTopUp').classList.remove('hidden');
+  document.querySelector('h1').textContent = 'Extend your credits with a top-up plan';
+  document.querySelector('.text-center p').textContent = 'Select a top-up plan, complete payment, and upload your receipt. Credits will be added to your account immediately after approval.';
+  renderTopupPlans();
 }
 
 function renderPlans() {
   document.getElementById('planOptions').innerHTML = plans.map((p) => `
-    <div class="card" data-plan="${p.id}" style="cursor:pointer; border-width:2px;">
+    <div class="card" data-plan="${p.id}" data-type="activation" style="cursor:pointer; border-width:2px;">
       ${p.badgeText ? `<span class="badge badge-warning">${p.badgeText}</span>` : ''}
       <h3 style="margin:${p.badgeText ? '8px' : '0'} 0 0 0;">${p.name}</h3>
       ${p.tagline ? `<p style="font-size:.9rem; color:var(--text-muted); margin-top:4px;">${p.tagline}</p>` : ''}
@@ -150,14 +177,33 @@ function renderPlans() {
       ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.85rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
     </div>
   `).join('');
-  document.querySelectorAll('[data-plan]').forEach((el) => {
-    el.addEventListener('click', () => selectPlan(parseInt(el.dataset.plan, 10)));
+  document.querySelectorAll('[data-plan][data-type="activation"]').forEach((el) => {
+    el.addEventListener('click', () => selectPlan(parseInt(el.dataset.plan, 10), 'activation'));
   });
 }
 
-function selectPlan(id) {
+function renderTopupPlans() {
+  document.getElementById('stepTopUp').classList.remove('hidden');
+  document.getElementById('topupPlanOptions').innerHTML = topupPlans.map((p) => `
+    <div class="card" data-plan="${p.id}" data-type="topup" style="cursor:pointer; border-width:2px;">
+      ${p.badgeText ? `<span class="badge badge-warning">${p.badgeText}</span>` : ''}
+      <h3 style="margin:${p.badgeText ? '8px' : '0'} 0 0 0;">${p.name}</h3>
+      ${p.tagline ? `<p style="font-size:.9rem; color:var(--text-muted); margin-top:4px;">${p.tagline}</p>` : ''}
+      <div style="font-size:1.6rem; font-weight:800; color:var(--blue-900); margin-top:8px;">$${p.price}</div>
+      <p>${p.credits.toLocaleString()} credits · ${p.minutes} min</p>
+      ${p.description ? `<p class="text-muted">${p.description}</p>` : ''}
+      ${p.features && p.features.length ? `<ul style="margin:8px 0; padding-left:16px; font-size:.85rem; color:var(--text-muted);">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-plan][data-type="topup"]').forEach((el) => {
+    el.addEventListener('click', () => selectPlan(parseInt(el.dataset.plan, 10), 'topup'));
+  });
+}
+
+function selectPlan(id, type) {
   selectedPlanId = id;
-  document.querySelectorAll('[data-plan]').forEach((el) => {
+  selectedPlanType = type;
+  document.querySelectorAll(`[data-plan][data-type="${type}"]`).forEach((el) => {
     el.style.borderColor = parseInt(el.dataset.plan, 10) === id ? 'var(--blue-600)' : 'var(--border)';
   });
   document.getElementById('stepMethod').classList.remove('hidden');
@@ -218,6 +264,7 @@ document.getElementById('receiptForm').addEventListener('submit', async (e) => {
 
   const fd = new FormData();
   fd.append('planId', selectedPlanId);
+  fd.append('planType', selectedPlanType);
   fd.append('methodId', selectedMethodId);
   fd.append('receipt', file);
 

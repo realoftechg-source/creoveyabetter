@@ -86,6 +86,22 @@ CREATE TABLE IF NOT EXISTS credit_plans (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS topup_plans (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  badge_text TEXT DEFAULT '',
+  tagline TEXT DEFAULT '',
+  price NUMERIC NOT NULL,
+  credits INTEGER NOT NULL,
+  minutes NUMERIC NOT NULL,
+  description TEXT DEFAULT '',
+  features TEXT DEFAULT '',
+  is_featured INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS payment_methods (
   id SERIAL PRIMARY KEY,
   method_type TEXT NOT NULL CHECK(method_type IN ('bank','crypto')),
@@ -106,6 +122,8 @@ CREATE TABLE IF NOT EXISTS payment_submissions (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   plan_id INTEGER REFERENCES credit_plans(id) ON DELETE SET NULL,
+  topup_plan_id INTEGER REFERENCES topup_plans(id) ON DELETE SET NULL,
+  plan_type TEXT NOT NULL DEFAULT 'activation' CHECK(plan_type IN ('activation','topup')),
   method_id INTEGER REFERENCES payment_methods(id) ON DELETE SET NULL,
   amount NUMERIC NOT NULL,
   receipt_path TEXT NOT NULL,
@@ -187,6 +205,18 @@ async function initDb() {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Trial', 'Most Popular', 'Best for first-time creators', 10, 300, 6, 'Entry activation for a first-time user.', 'Access to all AI engines|Full dashboard & session history|Simple pay-as-you-go activation', 1, 0, 1, 1, 1]);
     await run(`INSERT INTO credit_plans (name, badge_text, tagline, price, credits, minutes, description, features, is_trial, allow_top_up, is_featured, is_active, sort_order)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ['Full Access', 'Best Value', 'For regular streamers who need more runtime', 65, 5000, 25, 'Unlimited access to the full AI studio.', 'Access to all AI engines|Full dashboard & session history|Priority support', 0, 1, 1, 1, 2]);
+  }
+
+  const topupCount = (await get('SELECT COUNT(*) AS c FROM topup_plans')).c;
+  if (Number(topupCount) === 0) {
+    await run(`INSERT INTO topup_plans (name, badge_text, price, credits, minutes, description, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['Quick Top-Up', '', 10, 500, 5, '5 minutes of instant streaming time', 1, 1]);
+    await run(`INSERT INTO topup_plans (name, badge_text, price, credits, minutes, description, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['Standard Top-Up', 'Best Value', 30, 1500, 15, '15 minutes of streaming time', 1, 2]);
+    await run(`INSERT INTO topup_plans (name, badge_text, price, credits, minutes, description, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['Pro Top-Up', '', 60, 3500, 30, '30 minutes of streaming time', 1, 3]);
+    await run(`INSERT INTO topup_plans (name, badge_text, price, credits, minutes, description, is_active, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['Plus Top-Up', '', 100, 6000, 50, '50 minutes of extended streaming', 1, 4]);
   }
 
   const adminCount = (await get('SELECT COUNT(*) AS c FROM users WHERE is_admin = 1')).c;
