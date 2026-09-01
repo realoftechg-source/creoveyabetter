@@ -143,7 +143,7 @@ async function loadTopUpPlans() {
   try {
     const data = await apiFetch('/api/payments/topup-plans');
     const grid = document.getElementById('topupPlansGrid');
-    if (!data.plans.length) {
+    if (!data || !data.plans || data.plans.length === 0) {
       grid.innerHTML = '<p class="text-muted text-center">No top-up plans available right now.</p>';
       return;
     }
@@ -163,6 +163,7 @@ async function loadTopUpPlans() {
       </div>
     `).join('');
   } catch (e) {
+    console.error('Failed to load top-up plans:', e);
     document.getElementById('topupPlansGrid').innerHTML = '<p class="text-muted text-center">Could not load top-up plans right now.</p>';
   }
 }

@@ -354,11 +354,14 @@ function openTopUpPlanModal(plan) {
       <div class="form-group" style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="tpFeatured" ${p.is_featured ? 'checked' : ''} style="width:auto;"><label for="tpFeatured" style="margin:0;">Highlight as featured</label>
       </div>
+      <div id="tpError" class="error-banner" style="display:none; margin-bottom:12px;"></div>
       <button type="submit" class="btn btn-primary btn-block">${plan ? 'Save Changes' : 'Create Plan'}</button>
     </form>
   `);
   document.getElementById('topupPlanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const errDiv = document.getElementById('tpError');
+    errDiv.style.display = 'none';
     const featuresText = document.getElementById('tpFeatures').value.split('\n').filter(f => f.trim());
     const body = {
       name: document.getElementById('tpName').value,
@@ -373,10 +376,15 @@ function openTopUpPlanModal(plan) {
       isActive: document.getElementById('tpActive').checked,
       isFeatured: document.getElementById('tpFeatured').checked,
     };
-    if (plan) await apiFetch(`/api/admin/topup-plans/${plan.id}`, { method: 'PUT', body });
-    else await apiFetch('/api/admin/topup-plans', { method: 'POST', body });
-    closeModal();
-    renderTopUp();
+    try {
+      if (plan) await apiFetch(`/api/admin/topup-plans/${plan.id}`, { method: 'PUT', body });
+      else await apiFetch('/api/admin/topup-plans', { method: 'POST', body });
+      closeModal();
+      renderTopUp();
+    } catch (err) {
+      errDiv.textContent = err.message || 'Failed to save plan';
+      errDiv.style.display = 'block';
+    }
   });
 }
 
